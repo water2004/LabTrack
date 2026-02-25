@@ -32,6 +32,7 @@ class Equipment(EquipmentBase):
 
 class ExperimentStart(BaseModel):
     device_ids: List[int]
+    notes: Optional[str] = None
 
 class ExperimentStop(BaseModel):
     device_ids: List[int]

@@ -146,6 +146,7 @@
                     <el-tag type="info" size="small">{{ (row.duration / 60).toFixed(1) }} 分钟</el-tag>
                   </template>
                 </el-table-column>
+                <el-table-column prop="notes" label="备注" />
               </el-table>
             </el-card>
           </div>

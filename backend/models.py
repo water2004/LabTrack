@@ -31,6 +31,7 @@ class ActiveSession(Base):
     equipment_id = Column(Integer, ForeignKey("equipments.id"))
     start_time = Column(DateTime, default=datetime.datetime.utcnow)
     group_id = Column(String, nullable=True) # UUID for grouped experiments
+    notes = Column(String, nullable=True)
 
 class UsageRecord(Base):
     __tablename__ = "usage_records"
@@ -41,6 +42,7 @@ class UsageRecord(Base):
     start_time = Column(DateTime)
     end_time = Column(DateTime, default=datetime.datetime.utcnow)
     duration = Column(Integer) # in seconds
+    notes = Column(String, nullable=True)
 
 class Preset(Base):
     __tablename__ = "presets"

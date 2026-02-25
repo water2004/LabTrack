@@ -104,7 +104,7 @@ def start_experiment(data: schemas.ExperimentStart, username: str, db: Session =
         if eq.status != 0:
             raise HTTPException(status_code=400, detail=f"Device {eq.name} is not idle")
         eq.status = 1
-        session = models.ActiveSession(user_id=user.id, equipment_id=eq.id, group_id=group_id)
+        session = models.ActiveSession(user_id=user.id, equipment_id=eq.id, group_id=group_id, notes=data.notes)
         db.add(session)
     
     db.commit()
@@ -134,7 +134,8 @@ def stop_experiment(data: schemas.ExperimentStop, username: str, db: Session = D
                 user_name=user.username,
                 start_time=session.start_time,
                 end_time=now,
-                duration=int(duration)
+                duration=int(duration),
+                notes=session.notes
             )
             db.add(record)
         db.delete(session)
@@ -167,6 +168,7 @@ def get_my_active_groups(username: str, db: Session = Depends(get_db)):
             groups[s.group_id] = {
                 "group_id": s.group_id,
                 "start_time": s.start_time,
+                "notes": s.notes,
                 "devices": []
             }
         eq = db.query(models.Equipment).filter(models.Equipment.id == s.equipment_id).first()
@@ -280,7 +282,8 @@ def export_records(start_date: str = None, end_date: str = None, db: Session = D
             "使用者": r.user_name,
             "开始时间": r.start_time.strftime("%Y-%m-%d %H:%M:%S") if r.start_time else "",
             "结束时间": r.end_time.strftime("%Y-%m-%d %H:%M:%S") if r.end_time else "",
-            "时长(秒)": r.duration
+            "时长(秒)": r.duration,
+            "备注": r.notes
         } for r in records
     ])
     

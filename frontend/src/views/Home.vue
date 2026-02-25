@@ -119,8 +119,10 @@
               <div v-for="group in activeGroups" :key="group.group_id" class="experiment-card">
                 <div class="exp-header">
                   <div class="time-info">
-                    <span class="label">开始时间</span>
-                    <span class="value">{{ formatTime(group.start_time) }}</span>
+                    <span class="label">开始时间: {{ formatTime(group.start_time) }}</span>
+                    <span class="value" v-if="group.notes" style="font-size: 13px; color: #409EFF; margin-top: 4px;">
+                      📝 备注: {{ group.notes }}
+                    </span>
                   </div>
                   <el-button type="danger" plain size="small" round @click="stopGroup(group)">结束实验</el-button>
                 </div>
@@ -430,22 +432,32 @@ const addDevice = async () => {
 };
 
 const startExperiment = async () => {
-  try {
-    const ids = selectedDevices.value.map(d => d.id);
-    await api.post(`/experiment/start?username=${username}`, { device_ids: ids });
-    
-    // 生成分享链接
-    const baseUrl = window.location.origin + window.location.pathname;
-    shareLink.value = `${baseUrl}?ids=${ids.join(',')}`;
-    
-    selectedDevices.value = [];
-    showLinkDialog.value = true;
-    
-    fetchDevices();
-    fetchActiveGroups();
-  } catch (err: any) {
-    ElMessage.error(err.response?.data?.detail || '启动失败');
-  }
+  ElMessageBox.prompt('请输入本次实验备注 (必填)', '开始实验', {
+    confirmButtonText: '立即开始',
+    cancelButtonText: '取消',
+    inputPlaceholder: '例如: 观察细胞生长 (项目编号 102)',
+    inputPattern: /\S+/,
+    inputErrorMessage: '备注不能为空',
+  }).then(async ({ value }) => {
+    try {
+      const ids = selectedDevices.value.map(d => d.id);
+      await api.post(`/experiment/start?username=${username}`, { 
+        device_ids: ids,
+        notes: value || ''
+      });
+      
+      const baseUrl = window.location.origin + window.location.pathname;
+      shareLink.value = `${baseUrl}?ids=${ids.join(',')}`;
+      
+      selectedDevices.value = [];
+      showLinkDialog.value = true;
+      
+      fetchDevices();
+      fetchActiveGroups();
+    } catch (err: any) {
+      ElMessage.error(err.response?.data?.detail || '启动失败');
+    }
+  });
 };
 
 const promptSavePreset = () => {
