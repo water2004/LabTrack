@@ -1,146 +1,219 @@
 <template>
   <div class="home-container">
-    <el-header class="header">
-      <div class="logo">LabTrack</div>
-      <div class="user-info">
-        <el-button type="primary" size="small" @click="showAddDevice = true">+ 录入设备</el-button>
-        <span>{{ username }}</span>
-        <el-button link @click="logout">登出</el-button>
+    <el-header class="custom-header">
+      <div class="logo-area">
+        <div class="logo-icon">
+          <el-icon :size="20" color="#fff"><ElementPlus /></el-icon>
+        </div>
+        <span class="brand-name">LabTrack</span>
+      </div>
+      
+      <div class="header-actions">
+        <el-button type="primary" bg round size="default" @click="showAddDevice = true" class="add-btn">
+          <el-icon style="margin-right: 5px"><Plus /></el-icon> 录入设备
+        </el-button>
+        
+        <el-dropdown trigger="click">
+          <div class="user-avatar">
+            {{ username?.charAt(0).toUpperCase() }}
+          </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item disabled>{{ username }}</el-dropdown-item>
+              <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </el-header>
 
     <main class="main-content">
-      <el-tabs v-model="activeTab" class="custom-tabs">
+      <el-tabs v-model="activeTab" class="modern-tabs">
         <!-- 标签页 1: 设备列表 -->
         <el-tab-pane label="设备浏览" name="devices">
-          <div class="filter-bar">
-            <el-radio-group v-model="deviceFilter" size="small">
+          <div class="toolbar">
+            <el-radio-group v-model="deviceFilter" size="large" class="custom-radio">
               <el-radio-button label="all">全部设备</el-radio-button>
               <el-radio-button label="mine">我负责的</el-radio-button>
             </el-radio-group>
+            
             <el-input 
               v-model="searchQuery" 
-              placeholder="搜索名称/资产号" 
-              size="small" 
-              style="width: 200px; margin-left: 10px;" 
+              placeholder="搜索设备名称或资产号..." 
+              size="large" 
+              class="search-input"
               @input="fetchDevices"
               clearable
-            />
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
           </div>
-          <el-row :gutter="20">
+
+          <el-row :gutter="24">
             <el-col v-for="device in filteredDevices" :key="device.id" :xs="24" :sm="12" :md="8" :lg="6">
-              <el-card class="device-card" :body-style="{ padding: '0px' }" @click="device.status === 0 && toggleSelection(device)">
-                <div class="image-placeholder">
+              <div 
+                class="device-card-modern" 
+                :class="{ 'is-selected': isSelected(device.id), 'is-disabled': device.status !== 0 }"
+                @click="device.status === 0 && toggleSelection(device)"
+              >
+                <div class="card-image-wrapper">
                   <img v-if="device.image_path" :src="`http://localhost:8000${device.image_path}`" class="device-img" />
-                  <div v-else class="no-img">No Image</div>
-                  <div class="status-tag" :class="statusClass(device.status)">
+                  <div v-else class="no-img-placeholder">
+                    <el-icon :size="40" color="#dcdfe6"><Picture /></el-icon>
+                  </div>
+                  
+                  <div class="status-badge" :class="statusClass(device.status)">
                     {{ statusText(device.status) }}
                   </div>
-                  <div v-if="isSelected(device.id)" class="selected-overlay">
-                    <el-icon size="30" color="#fff"><Check /></el-icon>
+                  
+                  <div class="selection-indicator" v-if="isSelected(device.id)">
+                    <el-icon color="#fff" :size="24"><Check /></el-icon>
                   </div>
                 </div>
-                <div style="padding: 14px">
-                  <div class="device-name">{{ device.name }}</div>
-                  <div class="device-code">资产号: {{ device.asset_code }}</div>
-                  <div class="device-footer">
-                    <span class="manager">负责人: {{ device.manager || '无' }}</span>
-                    <el-button 
-                      v-if="device.status === 0" 
-                      :type="isSelected(device.id) ? 'success' : 'primary'" 
-                      size="small" 
-                      plain
-                    >
-                      {{ isSelected(device.id) ? '已选中' : '+ 加入' }}
-                    </el-button>
+                
+                <div class="card-content">
+                  <div class="card-header">
+                    <h3 class="device-name">{{ device.name }}</h3>
+                    <span class="asset-code">{{ device.asset_code }}</span>
+                  </div>
+                  
+                  <div class="card-meta">
+                    <div class="meta-item">
+                      <el-icon><Location /></el-icon>
+                      <span>{{ device.location || '未登记位置' }}</span>
+                    </div>
+                    <div class="meta-item">
+                      <el-icon><User /></el-icon>
+                      <span>{{ device.manager || '无负责人' }}</span>
+                    </div>
                   </div>
                 </div>
-              </el-card>
+              </div>
             </el-col>
           </el-row>
         </el-tab-pane>
 
         <!-- 标签页 2: 实验管理 -->
         <el-tab-pane label="实验管理" name="experiments">
-          <div class="section-title">🚀 进行中的实验 ({{ activeGroups.length }})</div>
-          <el-empty v-if="activeGroups.length === 0" description="暂无运行中的实验" :image-size="60" />
-          <el-row :gutter="20">
-            <el-col v-for="group in activeGroups" :key="group.group_id" :span="24">
-              <el-card class="active-exp-card" style="margin-bottom: 15px;">
-                <template #header>
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 13px; color: #909399;">开始时间: {{ formatTime(group.start_time) }}</span>
-                    <el-button type="danger" size="small" @click="stopGroup(group)">结束该实验</el-button>
+          <div class="experiments-container">
+            <div class="section-header">
+              <h3>🚀 进行中的实验 <span class="count-badge">{{ activeGroups.length }}</span></h3>
+            </div>
+            
+            <el-empty v-if="activeGroups.length === 0" description="暂无运行中的实验" :image-size="100" />
+            
+            <div class="active-experiments-grid">
+              <div v-for="group in activeGroups" :key="group.group_id" class="experiment-card">
+                <div class="exp-header">
+                  <div class="time-info">
+                    <span class="label">开始时间</span>
+                    <span class="value">{{ formatTime(group.start_time) }}</span>
                   </div>
-                </template>
-                <div class="exp-devices">
-                  <el-tag v-for="dev in group.devices" :key="dev.id" size="small" style="margin-right: 8px; margin-bottom: 5px;">
-                    {{ dev.name }}
-                  </el-tag>
+                  <el-button type="danger" plain size="small" round @click="stopGroup(group)">结束实验</el-button>
                 </div>
-              </el-card>
-            </el-col>
-          </el-row>
-
-          <el-divider />
-
-          <div class="section-title">⭐ 预设组合</div>
-          <el-empty v-if="presets.length === 0" description="暂无保存的预设" :image-size="60" />
-          <el-row :gutter="20">
-            <el-col v-for="preset in presets" :key="preset.id" :span="24">
-              <el-card class="preset-card" style="margin-bottom: 10px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <div class="preset-name">{{ preset.name }}</div>
-                  <div>
-                    <el-button type="primary" size="small" @click="applyPreset(preset)">加载</el-button>
-                    <el-button type="danger" size="small" link @click="deletePreset(preset.id)">删除</el-button>
+                <div class="exp-divider"></div>
+                <div class="exp-devices-list">
+                  <div v-for="dev in group.devices" :key="dev.id" class="exp-device-item">
+                    <div class="dot"></div>
+                    <span>{{ dev.name }}</span>
+                    <span class="code">{{ dev.asset_code }}</span>
                   </div>
                 </div>
-              </el-card>
-            </el-col>
-          </el-row>
+              </div>
+            </div>
+
+            <el-divider class="section-divider" />
+
+            <div class="section-header">
+              <h3>⭐ 预设组合 <span class="count-badge secondary">{{ presets.length }}</span></h3>
+            </div>
+            
+            <el-empty v-if="presets.length === 0" description="暂无保存的预设" :image-size="80" />
+            
+            <div class="presets-grid">
+              <div v-for="preset in presets" :key="preset.id" class="preset-card-modern">
+                <div class="preset-icon">
+                  <el-icon><Collection /></el-icon>
+                </div>
+                <div class="preset-info">
+                  <h4>{{ preset.name }}</h4>
+                  <p>{{ preset.device_ids.split(',').length }} 台设备</p>
+                </div>
+                <div class="preset-actions">
+                  <el-button type="primary" circle size="small" @click="applyPreset(preset)">
+                    <el-icon><VideoPlay /></el-icon>
+                  </el-button>
+                  <el-button type="danger" circle plain size="small" @click="deletePreset(preset.id)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
         </el-tab-pane>
       </el-tabs>
     </main>
 
     <!-- 录入设备弹窗 -->
-    <el-dialog v-model="showAddDevice" title="录入新设备" width="90%">
+    <el-dialog v-model="showAddDevice" title="录入新设备" width="500px" center custom-class="add-dialog">
       <el-form :model="newDevice" label-width="80px" label-position="top">
         <el-form-item label="设备名称">
-          <el-input v-model="newDevice.name" placeholder="如: 恒温摇床" />
+          <el-input v-model="newDevice.name" placeholder="如: 恒温摇床" size="large" />
         </el-form-item>
         <el-form-item label="资产编号">
-          <el-input v-model="newDevice.asset_code" placeholder="扫描或输入资产标签号" />
+          <el-input v-model="newDevice.asset_code" placeholder="扫描或输入资产标签号" size="large" />
         </el-form-item>
-        <el-form-item label="存放位置">
-          <el-input v-model="newDevice.location" placeholder="如: 302实验室" />
-        </el-form-item>
-        <el-form-item label="设备照片">
-          <input type="file" accept="image/*" capture="environment" @change="handleFileUpload" style="width: 100%" />
-          <p style="font-size: 12px; color: #909399;">支持拍照上传</p>
-        </el-form-item>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="存放位置">
+              <el-input v-model="newDevice.location" placeholder="如: 302" size="large" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="设备照片">
+              <div class="upload-btn-wrapper">
+                <el-button size="large" style="width: 100%">选择文件</el-button>
+                <input type="file" accept="image/*" capture="environment" @change="handleFileUpload" />
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="showAddDevice = false">取消</el-button>
-        <el-button type="primary" @click="addDevice" :loading="loading">确认录入</el-button>
+        <el-button @click="showAddDevice = false" size="large">取消</el-button>
+        <el-button type="primary" @click="addDevice" :loading="loading" size="large">确认录入</el-button>
       </template>
     </el-dialog>
 
-    <!-- 已选设备浮动条 (购物车模式) -->
-    <div v-if="selectedDevices.length > 0" class="selection-drawer">
-      <div class="selection-header">
-        <span class="selection-names">已选 ({{ selectedDevices.length }}): {{ selectedNames }}</span>
-        <div class="selection-actions">
-          <el-button type="info" size="small" plain @click="promptSavePreset">存为预设</el-button>
-          <el-button type="success" size="small" @click="startExperiment">开始实验</el-button>
+    <!-- 底部浮动栏 (购物车) -->
+    <transition name="slide-up">
+      <div v-if="selectedDevices.length > 0" class="floating-cart">
+        <div class="cart-content">
+          <div class="cart-info">
+            <span class="count">{{ selectedDevices.length }}</span>
+            <span class="label">已选设备</span>
+            <div class="device-preview">{{ selectedNames }}</div>
+          </div>
+          <div class="cart-actions">
+            <el-button type="info" plain round @click="promptSavePreset">存为预设</el-button>
+            <el-button type="primary" round class="start-btn" @click="startExperiment">
+              立即开始 <el-icon class="el-icon--right"><Right /></el-icon>
+            </el-button>
+          </div>
         </div>
       </div>
-    </div>
-
-    <!-- 实验开启成功弹窗 (带链接) -->
-    <el-dialog v-model="showLinkDialog" title="实验已开启" width="300px">
-      <p>您可以收藏此链接，下次一键复用此组合：</p>
-      <el-input v-model="shareLink" readonly>
+    </transition>
+    
+    <!-- 实验开启成功弹窗 -->
+    <el-dialog v-model="showLinkDialog" title="实验已开启" width="400px" center>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <el-icon :size="50" color="#67C23A"><CircleCheckFilled /></el-icon>
+        <p style="font-size: 16px; margin-top: 10px;">实验开始成功！</p>
+      </div>
+      <p style="color: #909399; font-size: 13px;">您可以收藏此链接，下次一键复用此组合：</p>
+      <el-input v-model="shareLink" readonly size="large">
         <template #append>
           <el-button @click="copyLink">复制</el-button>
         </template>
@@ -153,7 +226,10 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api';
-import { Search, Check, VideoPlay } from '@element-plus/icons-vue';
+import { 
+  Search, Check, VideoPlay, Plus, Picture, Location, User, 
+  Right, CircleCheckFilled, Collection, Delete, ElementPlus 
+} from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 const username = localStorage.getItem('username');
@@ -166,14 +242,6 @@ const activeTab = ref('devices');
 const deviceFilter = ref('all');
 const presets = ref<any[]>([]);
 
-const filteredDevices = computed(() => {
-  let list = devices.value;
-  if (deviceFilter.value === 'mine') {
-    list = list.filter(d => d.manager === username);
-  }
-  return list;
-});
-
 const showAddDevice = ref(false);
 const loading = ref(false);
 const newDevice = ref({ name: '', asset_code: '', location: '', manager: username });
@@ -181,6 +249,14 @@ const selectedFile = ref<File | null>(null);
 
 const showLinkDialog = ref(false);
 const shareLink = ref('');
+
+const filteredDevices = computed(() => {
+  let list = devices.value;
+  if (deviceFilter.value === 'mine') {
+    list = list.filter(d => d.manager === username);
+  }
+  return list;
+});
 
 const fetchDevices = async () => {
   const res = await api.get('/devices', { params: { q: searchQuery.value } });
@@ -192,54 +268,9 @@ const fetchActiveGroups = async () => {
   activeGroups.value = res.data;
 };
 
-const stopGroup = async (group: any) => {
-  ElMessageBox.confirm(`确定要结束该实验吗？(包含 ${group.devices.length} 台设备)`, '提示').then(async () => {
-    try {
-      const ids = group.devices.map((d: any) => d.id);
-      await api.post(`/experiment/stop?username=${username}`, { device_ids: ids });
-      ElMessage.success('实验已结束');
-      fetchDevices();
-      fetchActiveGroups();
-    } catch (err) {
-      ElMessage.error('结束失败');
-    }
-  });
-};
-
-const formatTime = (timeStr: string) => {
-  const d = new Date(timeStr);
-  return d.toLocaleString('zh-CN', { hour12: false });
-};
-
 const fetchPresets = async () => {
   const res = await api.get('/presets', { params: { username } });
   presets.value = res.data;
-};
-
-const promptSavePreset = () => {
-  ElMessageBox.prompt('请输入预设名称', '保存预设', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-  }).then(async ({ value }) => {
-    if (!value) return;
-    const ids = selectedDevices.value.map(d => d.id).join(',');
-    await api.post(`/presets?username=${username}`, { name: value, device_ids: ids });
-    ElMessage.success('预设已保存');
-    fetchPresets();
-  });
-};
-
-const applyPreset = (preset: any) => {
-  const ids = preset.device_ids.split(',').map((id: string) => parseInt(id));
-  selectedDevices.value = devices.value.filter(d => ids.includes(d.id) && d.status === 0);
-  activeTab.value = 'devices';
-  ElMessage.success(`已加载预设: ${preset.name}`);
-};
-
-const deletePreset = async (id: number) => {
-  await api.delete(`/presets/${id}?username=${username}`);
-  ElMessage.success('预设已删除');
-  fetchPresets();
 };
 
 const statusText = (status: number) => {
@@ -318,11 +349,72 @@ const startExperiment = async () => {
   }
 };
 
-// stopExperiment removed
+const promptSavePreset = () => {
+  ElMessageBox.prompt('请输入预设名称', '保存预设', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+  }).then(async ({ value }) => {
+    if (!value) return;
+    const ids = selectedDevices.value.map(d => d.id).join(',');
+    await api.post(`/presets?username=${username}`, { name: value, device_ids: ids });
+    ElMessage.success('预设已保存');
+    fetchPresets();
+  });
+};
+
+const applyPreset = (preset: any) => {
+  const ids = preset.device_ids.split(',').map((id: string) => parseInt(id));
+  const available = devices.value.filter(d => ids.includes(d.id) && d.status === 0);
+  
+  if (available.length === 0) {
+    ElMessage.warning('预设中的设备当前都在使用中或不存在');
+    return;
+  }
+  
+  selectedDevices.value = available;
+  activeTab.value = 'devices';
+  
+  if (available.length < ids.length) {
+    ElMessage.warning(`部分设备忙碌，已选中 ${available.length} 台可用设备`);
+  } else {
+    ElMessage.success(`已加载预设: ${preset.name}`);
+  }
+};
+
+const deletePreset = async (id: number) => {
+  await api.delete(`/presets/${id}?username=${username}`);
+  ElMessage.success('预设已删除');
+  fetchPresets();
+};
+
+const stopGroup = async (group: any) => {
+  ElMessageBox.confirm(`确定要结束该实验吗？(包含 ${group.devices.length} 台设备)`, '提示', {
+    confirmButtonText: '确认结束',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      const ids = group.devices.map((d: any) => d.id);
+      await api.post(`/experiment/stop?username=${username}`, { device_ids: ids });
+      ElMessage.success('实验已结束');
+      fetchDevices();
+      fetchActiveGroups();
+    } catch (err) {
+      ElMessage.error('结束失败');
+    }
+  });
+};
+
+const formatTime = (timeStr: string) => {
+  const d = new Date(timeStr);
+  return d.toLocaleString('zh-CN', { 
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' 
+  });
+};
 
 const copyLink = () => {
   navigator.clipboard.writeText(shareLink.value);
-  ElMessage.success('链接已复制到剪贴板');
+  ElMessage.success('链接已复制');
 };
 
 const logout = () => {
@@ -340,7 +432,6 @@ onMounted(() => {
   const batchIds = urlParams.get('ids');
 
   if (scanId) {
-    // 扫码直连逻辑 (单机模式)
     const idNum = parseInt(scanId);
     api.get('/devices').then(res => {
       const device = res.data.find((d: any) => d.id === idNum);
@@ -350,7 +441,6 @@ onMounted(() => {
       }
     });
   } else if (batchIds) {
-    // 一键复用逻辑
     const ids = batchIds.split(',').map(id => parseInt(id));
     api.get('/devices').then(res => {
       selectedDevices.value = res.data.filter((d: any) => ids.includes(d.id) && d.status === 0);
@@ -365,162 +455,404 @@ onMounted(() => {
 <style scoped>
 .home-container {
   min-height: 100vh;
-  background-color: #f0f2f5;
-  padding-bottom: 80px; /* 为底部抽屉留出空间 */
+  background-color: #f5f7fa;
+  padding-bottom: 100px;
 }
-.header {
+
+/* 顶部导航栏 */
+.custom-header {
   background: #fff;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  padding: 0 24px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
   position: sticky;
   top: 0;
   z-index: 100;
 }
-.logo {
-  font-size: 20px;
-  font-weight: bold;
-  color: #409EFF;
-}
-.search-box {
-  width: 40%;
-}
-.user-info {
+.logo-area {
   display: flex;
   align-items: center;
   gap: 10px;
 }
-.active-bar {
-  background: #fdf6ec;
-  border-bottom: 1px solid #faecd8;
-  padding: 10px 20px;
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #409EFF 0%, #3a8ee6 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.brand-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #303133;
+  letter-spacing: -0.5px;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.add-btn {
+  font-weight: 600;
+}
+.user-avatar {
+  width: 36px;
+  height: 36px;
+  background: #ecf5ff;
+  color: #409EFF;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  transition: all 0.2s;
+}
+.user-avatar:hover {
+  background: #409EFF;
+  color: #fff;
+}
+
+.main-content {
+  max-width: 1200px;
+  margin: 20px auto;
+  padding: 0 20px;
+}
+
+/* 工具栏 */
+.toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
 }
-.active-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #e6a23c;
-  font-weight: bold;
+.search-input {
+  width: 300px;
 }
-.main-content {
-  padding: 10px 20px;
-}
-.filter-bar {
-  margin-bottom: 15px;
-  display: flex;
-  justify-content: center;
-}
-.device-card {
-  margin-bottom: 20px;
+
+/* 现代设备卡片 */
+.device-card-modern {
+  background: #fff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: 24px;
+  border: 2px solid transparent;
   cursor: pointer;
-  position: relative;
 }
-.image-placeholder {
-  height: 150px;
-  background: #e4e7ed;
+.device-card-modern:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.08);
+}
+.device-card-modern.is-selected {
+  border-color: #67C23A;
+  background: #f0f9eb;
+}
+.device-card-modern.is-disabled {
+  opacity: 0.8;
+  cursor: not-allowed;
+  filter: grayscale(0.8);
+}
+
+.card-image-wrapper {
+  height: 160px;
+  position: relative;
+  background: #f8f9fa;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
 }
 .device-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.selected-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(103, 194, 58, 0.6);
+.no-img-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
 }
-.status-tag {
+.status-badge {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 2px 8px;
-  border-radius: 4px;
+  top: 12px;
+  right: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
   font-size: 12px;
+  font-weight: 600;
   color: #fff;
-  z-index: 10;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 .status-idle { background: #67C23A; }
 .status-busy { background: #F56C6C; }
 .status-error { background: #909399; }
 
-.device-name {
-  font-size: 16px;
-  font-weight: bold;
-  margin-bottom: 5px;
-}
-.device-code {
-  font-size: 13px;
-  color: #909399;
-}
-.device-footer {
-  margin-top: 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.manager {
-  font-size: 12px;
-  color: #606266;
-}
-
-.section-title {
-  font-weight: bold;
-  margin: 15px 0;
-  color: #303133;
-}
-.active-exp-card {
-  border-left: 4px solid #409EFF;
-}
-.exp-time {
-  font-size: 13px;
-  color: #909399;
-}
-
-/* 底部抽屉样式 */
-.selection-drawer {
-  position: fixed;
-  bottom: 0;
+.selection-indicator {
+  position: absolute;
+  top: 0;
   left: 0;
   right: 0;
-  background: #fff;
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-  padding: 15px 20px;
-  z-index: 1000;
+  bottom: 0;
+  background: rgba(103, 194, 58, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
 }
-.selection-header {
-  max-width: 1200px;
-  margin: 0 auto;
+
+.card-content {
+  padding: 16px;
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.device-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #303133;
+}
+.asset-code {
+  font-size: 12px;
+  color: #909399;
+  background: #f4f4f5;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.card-meta {
+  display: flex;
+  gap: 12px;
+  color: #606266;
+  font-size: 13px;
+}
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 实验管理样式 */
+.experiments-container {
+  padding: 0 10px;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.section-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #303133;
+}
+.count-badge {
+  background: #f56c6c;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  vertical-align: middle;
+}
+.count-badge.secondary {
+  background: #409EFF;
+}
+
+.active-experiments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+.experiment-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+  border-left: 4px solid #F56C6C;
+}
+.exp-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 15px;
 }
-.selection-names {
-  flex: 1;
-  font-weight: bold;
+.time-info {
+  display: flex;
+  flex-direction: column;
+}
+.time-info .label {
+  font-size: 12px;
+  color: #909399;
+}
+.time-info .value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+.exp-divider {
+  height: 1px;
+  background: #ebeef5;
+  margin-bottom: 15px;
+}
+.exp-device-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #606266;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #409EFF;
+}
+.exp-device-item .code {
+  color: #909399;
+  font-size: 12px;
+}
+
+.presets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 20px;
+}
+.preset-card-modern {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #ebeef5;
+  transition: all 0.2s;
+}
+.preset-card-modern:hover {
+  border-color: #409EFF;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.1);
+}
+.preset-icon {
+  width: 40px;
+  height: 40px;
+  background: #ecf5ff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #409EFF;
+}
+.preset-info {
+  flex: 1;
+}
+.preset-info h4 {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+  color: #303133;
+}
+.preset-info p {
+  margin: 0;
+  font-size: 12px;
+  color: #909399;
+}
+
+/* 底部浮动购物车 */
+.floating-cart {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  width: 90%;
+  max-width: 600px;
+}
+.cart-content {
+  background: rgba(48, 49, 51, 0.95);
+  backdrop-filter: blur(12px);
+  border-radius: 50px;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  color: #fff;
+}
+.cart-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.count {
+  background: #67C23A;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 13px;
+}
+.device-preview {
+  font-size: 13px;
+  color: #dcdfe6;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-right: 15px;
 }
-.selection-actions {
+.cart-actions {
   display: flex;
   gap: 10px;
 }
-</style>
+.start-btn {
+  padding-left: 20px;
+  padding-right: 20px;
+}
 
+.upload-btn-wrapper input[type=file] {
+  font-size: 100px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.upload-btn-wrapper {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+  width: 100%;
+}
+
+/* 过渡动画 */
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.5, 1);
+}
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translate(-50%, 100%);
+  opacity: 0;
+}
+</style>
