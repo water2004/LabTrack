@@ -330,6 +330,7 @@ const selectedFile = ref<File | null>(null);
 
 const showLinkDialog = ref(false);
 const shareLink = ref('');
+const pendingNotes = ref('');
 
 const filteredDevices = computed(() => {
   let list = devices.value;
@@ -373,6 +374,7 @@ const isSelected = (id: number) => selectedDevices.value.some(d => d.id === id);
 const selectedNames = computed(() => selectedDevices.value.map(d => d.name).join('、'));
 
 const toggleSelection = (device: any) => {
+  pendingNotes.value = ''; // 手动修改选择时清空预设带入的备注
   const index = selectedDevices.value.findIndex(d => d.id === device.id);
   if (index > -1) {
     selectedDevices.value.splice(index, 1);
@@ -461,6 +463,7 @@ const startExperiment = async () => {
     confirmButtonText: '立即开始',
     cancelButtonText: '取消',
     inputPlaceholder: '例如: 观察细胞生长 (项目编号 102)',
+    inputValue: pendingNotes.value,
     inputPattern: /\S+/,
     inputErrorMessage: '备注不能为空',
   }).then(async ({ value }) => {
@@ -508,6 +511,7 @@ const applyPreset = (preset: any) => {
   }
   
   selectedDevices.value = available;
+  pendingNotes.value = preset.notes || '';
   activeTab.value = 'devices';
   
   if (available.length < ids.length) {
