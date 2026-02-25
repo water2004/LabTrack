@@ -76,7 +76,18 @@
                 <div class="card-content">
                   <div class="card-header">
                     <h3 class="device-name">{{ device.name }}</h3>
-                    <span class="asset-code">{{ device.asset_code }}</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span class="asset-code">{{ device.asset_code }}</span>
+                      <el-button 
+                        v-if="device.manager === username" 
+                        link 
+                        type="primary" 
+                        style="padding: 0;"
+                        @click.stop="openEdit(device)"
+                      >
+                        <el-icon><Edit /></el-icon>
+                      </el-button>
+                    </div>
                   </div>
                   
                   <div class="card-meta">
@@ -154,36 +165,76 @@
           </div>
         </el-tab-pane>
       </el-tabs>
+
+      <div class="admin-footer">
+        <el-link type="info" :underline="false" @click="$router.push('/admin-login')">
+          <el-icon><Setting /></el-icon> 管理后台
+        </el-link>
+      </div>
     </main>
 
     <!-- 录入设备弹窗 -->
-    <el-dialog v-model="showAddDevice" title="录入新设备" width="500px" center custom-class="add-dialog">
+    <el-dialog v-model="showAddDevice" title="录入新设备" width="500px" center>
+      <div class="photo-capture-area">
+        <div class="preview-box" @click="$refs.fileInputAdd.click()">
+          <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
+          <div v-else class="preview-placeholder">
+            <el-icon :size="40"><Camera /></el-icon>
+            <p>点击拍照或选择照片</p>
+          </div>
+          <input type="file" ref="fileInputAdd" hidden accept="image/*" capture="environment" @change="handleFileUpload" />
+        </div>
+      </div>
+      
       <el-form :model="newDevice" label-width="80px" label-position="top">
         <el-form-item label="设备名称">
-          <el-input v-model="newDevice.name" placeholder="如: 恒温摇床" size="large" />
+          <el-input v-model="newDevice.name" placeholder="如: 恒温摇床" />
         </el-form-item>
         <el-form-item label="资产编号">
-          <el-input v-model="newDevice.asset_code" placeholder="扫描或输入资产标签号" size="large" />
+          <el-input v-model="newDevice.asset_code" placeholder="扫描或输入资产标签号" />
         </el-form-item>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="存放位置">
-              <el-input v-model="newDevice.location" placeholder="如: 302" size="large" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="设备照片">
-              <div class="upload-btn-wrapper">
-                <el-button size="large" style="width: 100%">选择文件</el-button>
-                <input type="file" accept="image/*" capture="environment" @change="handleFileUpload" />
-              </div>
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <el-form-item label="存放位置">
+          <el-input v-model="newDevice.location" placeholder="如: 302" />
+        </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showAddDevice = false" size="large">取消</el-button>
-        <el-button type="primary" @click="addDevice" :loading="loading" size="large">确认录入</el-button>
+        <el-button @click="showAddDevice = false">取消</el-button>
+        <el-button type="primary" @click="addDevice" :loading="loading">确认录入</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑设备弹窗 -->
+    <el-dialog v-model="showEditDevice" title="修改设备信息" width="450px" center>
+      <div class="photo-capture-area">
+        <div class="preview-box" @click="$refs.fileInputEdit.click()">
+          <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
+          <div v-else class="preview-placeholder">
+            <el-icon :size="40"><Camera /></el-icon>
+            <p>点击更换照片</p>
+          </div>
+          <input type="file" ref="fileInputEdit" hidden accept="image/*" capture="environment" @change="handleFileUpload" />
+        </div>
+      </div>
+
+      <el-form :model="editingDevice" label-width="80px" label-position="top">
+        <el-form-item label="设备名称">
+          <el-input v-model="editingDevice.name" />
+        </el-form-item>
+        <el-form-item label="存放位置">
+          <el-input v-model="editingDevice.location" />
+        </el-form-item>
+        <el-form-item label="设备状态">
+          <el-select v-model="editingDevice.status" style="width: 100%">
+            <el-option :value="0" label="闲置 (正常使用)" />
+            <el-option :value="1" label="使用中 (锁定)" />
+            <el-option :value="2" label="借出中 (外部借阅)" />
+            <el-option :value="3" label="故障 (不可用)" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditDevice = false">取消</el-button>
+        <el-button type="primary" @click="handleUpdate" :loading="loading">保存修改</el-button>
       </template>
     </el-dialog>
 
@@ -228,7 +279,8 @@ import { useRouter } from 'vue-router';
 import api from '../api';
 import { 
   Search, Check, VideoPlay, Plus, Picture, Location, User, 
-  Right, CircleCheckFilled, Collection, Delete, ElementPlus 
+  Right, CircleCheckFilled, Collection, Delete, ElementPlus,
+  Edit, Setting, Files, Camera
 } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
@@ -243,6 +295,8 @@ const deviceFilter = ref('all');
 const presets = ref<any[]>([]);
 
 const showAddDevice = ref(false);
+const showEditDevice = ref(false);
+const editingDevice = ref<any>({});
 const loading = ref(false);
 const newDevice = ref({ name: '', asset_code: '', location: '', manager: username });
 const selectedFile = ref<File | null>(null);
@@ -276,12 +330,14 @@ const fetchPresets = async () => {
 const statusText = (status: number) => {
   if (status === 0) return '闲置';
   if (status === 1) return '使用中';
+  if (status === 2) return '借出中';
   return '故障';
 };
 
 const statusClass = (status: number) => {
   if (status === 0) return 'status-idle';
   if (status === 1) return 'status-busy';
+  if (status === 2) return 'status-borrow';
   return 'status-error';
 };
 
@@ -298,8 +354,51 @@ const toggleSelection = (device: any) => {
   }
 };
 
+const previewUrl = ref('');
+
 const handleFileUpload = (event: any) => {
-  selectedFile.value = event.target.files[0];
+  const file = event.target.files[0];
+  if (file) {
+    selectedFile.value = file;
+    previewUrl.value = URL.createObjectURL(file);
+  }
+};
+
+const openAdd = () => {
+  newDevice.value = { name: '', asset_code: '', location: '', manager: username };
+  selectedFile.value = null;
+  previewUrl.value = '';
+  showAddDevice.value = true;
+};
+
+const openEdit = (device: any) => {
+  editingDevice.value = { ...device };
+  previewUrl.value = device.image_path ? `http://localhost:8000${device.image_path}` : '';
+  selectedFile.value = null;
+  showEditDevice.value = true;
+};
+
+const handleUpdate = async () => {
+  if (!editingDevice.value.name) return;
+  loading.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('name', editingDevice.value.name);
+    formData.append('location', editingDevice.value.location || '');
+    formData.append('status', editingDevice.value.status.toString());
+    if (selectedFile.value) {
+      formData.append('image', selectedFile.value);
+    }
+    
+    await api.put(`/devices/${editingDevice.value.id}`, formData);
+    ElMessage.success('更新成功');
+    showEditDevice.value = false;
+    fetchDevices();
+  } catch (err) {
+    ElMessage.error('更新失败');
+  } finally {
+    loading.value = false;
+  }
 };
 
 const addDevice = async () => {
@@ -526,6 +625,13 @@ onMounted(() => {
   padding: 0 20px;
 }
 
+.admin-footer {
+  text-align: center;
+  margin-top: 40px;
+  padding: 20px;
+  border-top: 1px solid #ebeef5;
+}
+
 /* 工具栏 */
 .toolbar {
   display: flex;
@@ -598,7 +704,45 @@ onMounted(() => {
 }
 .status-idle { background: #67C23A; }
 .status-busy { background: #F56C6C; }
+.status-borrow { background: #E6A23C; }
 .status-error { background: #909399; }
+
+/* 照片采集区域 */
+.photo-capture-area {
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+}
+.preview-box {
+  width: 100%;
+  max-width: 300px;
+  height: 200px;
+  border: 2px dashed #dcdfe6;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: #f8f9fa;
+  transition: all 0.2s;
+}
+.preview-box:hover {
+  border-color: #409EFF;
+}
+.preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.preview-placeholder {
+  text-align: center;
+  color: #909399;
+}
+.preview-placeholder p {
+  margin-top: 8px;
+  font-size: 14px;
+}
 
 .selection-indicator {
   position: absolute;

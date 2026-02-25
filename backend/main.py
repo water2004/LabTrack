@@ -58,6 +58,39 @@ def get_devices(q: str = None, db: Session = Depends(get_db)):
         )
     return query.all()
 
+@app.put("/devices/{device_id}")
+def update_device(
+    device_id: int,
+    name: str = Form(None),
+    asset_code: str = Form(None),
+    location: str = Form(None),
+    manager: str = Form(None),
+    status: int = Form(None),
+    image: UploadFile = File(None),
+    db: Session = Depends(get_db)
+):
+    device = db.query(models.Equipment).filter(models.Equipment.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    if name is not None: device.name = name
+    if asset_code is not None: device.asset_code = asset_code
+    if location is not None: device.location = location
+    if manager is not None: device.manager = manager
+    if status is not None: device.status = int(status)
+    
+    if image:
+        file_ext = image.filename.split(".")[-1]
+        file_name = f"{uuid.uuid4()}.{file_ext}"
+        image_path = os.path.join(UPLOAD_DIR, file_name)
+        with open(image_path, "wb") as buffer:
+            buffer.write(image.file.read())
+        device.image_path = f"/static/uploads/{file_name}"
+    
+    db.commit()
+    db.refresh(device)
+    return device
+
 @app.post("/experiment/start")
 def start_experiment(data: schemas.ExperimentStart, username: str, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == username).first()

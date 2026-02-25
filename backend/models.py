@@ -22,7 +22,7 @@ class Equipment(Base):
     image_path = Column(String, nullable=True)
     location = Column(String, nullable=True)
     manager = Column(String, nullable=True)
-    status = Column(Integer, default=0) # 0: idle, 1: in use, 2: borrowed
+    status = Column(Integer, default=0) # 0:闲置, 1:使用中, 2:借出中, 3:故障
 
 class ActiveSession(Base):
     __tablename__ = "active_sessions"
