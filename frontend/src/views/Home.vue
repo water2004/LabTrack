@@ -152,11 +152,15 @@
                 </div>
                 <div class="preset-info">
                   <h4>{{ preset.name }}</h4>
+                  <p v-if="preset.notes" style="font-size: 12px; color: #409EFF; margin-bottom: 2px;">📝 {{ preset.notes }}</p>
                   <p>{{ preset.device_ids.split(',').length }} 台设备</p>
                 </div>
                 <div class="preset-actions">
                   <el-button type="primary" circle size="small" @click="applyPreset(preset)">
                     <el-icon><VideoPlay /></el-icon>
+                  </el-button>
+                  <el-button type="info" plain circle size="small" @click="openEditPreset(preset)">
+                    <el-icon><Edit /></el-icon>
                   </el-button>
                   <el-button type="danger" circle plain size="small" @click="deletePreset(preset.id)">
                     <el-icon><Delete /></el-icon>
@@ -240,6 +244,25 @@
       </template>
     </el-dialog>
 
+    <!-- 编辑预设弹窗 -->
+    <el-dialog v-model="showEditPreset" title="编辑实验预设" width="400px" center>
+      <el-form :model="editingPreset" label-width="80px" label-position="top">
+        <el-form-item label="预设名称">
+          <el-input v-model="editingPreset.name" />
+        </el-form-item>
+        <el-form-item label="预设备注">
+          <el-input v-model="editingPreset.notes" type="textarea" placeholder="备注实验用途、注意事项等" />
+        </el-form-item>
+        <div style="font-size: 12px; color: #909399;">
+          包含设备 ID: {{ editingPreset.device_ids }}
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditPreset = false">取消</el-button>
+        <el-button type="primary" @click="handleUpdatePreset" :loading="loading">保存修改</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 底部浮动栏 (购物车) -->
     <transition name="slide-up">
       <div v-if="selectedDevices.length > 0" class="floating-cart">
@@ -298,7 +321,9 @@ const presets = ref<any[]>([]);
 
 const showAddDevice = ref(false);
 const showEditDevice = ref(false);
+const showEditPreset = ref(false);
 const editingDevice = ref<any>({});
+const editingPreset = ref<any>({});
 const loading = ref(false);
 const newDevice = ref({ name: '', asset_code: '', location: '', manager: username });
 const selectedFile = ref<File | null>(null);
@@ -496,6 +521,30 @@ const deletePreset = async (id: number) => {
   await api.delete(`/presets/${id}?username=${username}`);
   ElMessage.success('预设已删除');
   fetchPresets();
+};
+
+const openEditPreset = (preset: any) => {
+  editingPreset.value = { ...preset };
+  showEditPreset.value = true;
+};
+
+const handleUpdatePreset = async () => {
+  if (!editingPreset.value.name) return;
+  loading.value = true;
+  try {
+    await api.put(`/presets/${editingPreset.value.id}?username=${username}`, {
+      name: editingPreset.value.name,
+      device_ids: editingPreset.value.device_ids,
+      notes: editingPreset.value.notes
+    });
+    ElMessage.success('预设更新成功');
+    showEditPreset.value = false;
+    fetchPresets();
+  } catch (err) {
+    ElMessage.error('更新失败');
+  } finally {
+    loading.value = false;
+  }
 };
 
 const stopGroup = async (group: any) => {

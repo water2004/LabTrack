@@ -47,6 +47,7 @@ class Token(BaseModel):
 class PresetBase(BaseModel):
     name: str
     device_ids: str
+    notes: Optional[str] = None
 
 class PresetCreate(PresetBase):
     pass

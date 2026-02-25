@@ -50,3 +50,4 @@ class Preset(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     name = Column(String)
     device_ids = Column(String) # Comma separated IDs: "1,2,3"
+    notes = Column(String, nullable=True)

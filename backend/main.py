@@ -15,6 +15,24 @@ from database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
 
+# 简单的数据库迁移：确保 notes 列存在
+def migrate_db():
+    import sqlite3
+    try:
+        conn = sqlite3.connect('labtrack.db')
+        cursor = conn.cursor()
+        for table in ['active_sessions', 'usage_records', 'presets']:
+            try:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN notes TEXT")
+            except sqlite3.OperationalError:
+                pass # 已经存在则忽略
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Migration notice: {e}")
+
+migrate_db()
+
 app = FastAPI(title="LabTrack API")
 
 # CORS
@@ -196,6 +214,19 @@ def create_preset(data: schemas.PresetCreate, username: str, db: Session = Depen
 def get_presets(username: str, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == username).first()
     return db.query(models.Preset).filter(models.Preset.user_id == user.id).all()
+
+@app.put("/presets/{preset_id}", response_model=schemas.Preset)
+def update_preset(preset_id: int, data: schemas.PresetCreate, username: str, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == username).first()
+    preset = db.query(models.Preset).filter(models.Preset.id == preset_id, models.Preset.user_id == user.id).first()
+    if not preset:
+        raise HTTPException(status_code=404, detail="Preset not found")
+    preset.name = data.name
+    preset.device_ids = data.device_ids
+    preset.notes = data.notes
+    db.commit()
+    db.refresh(preset)
+    return preset
 
 @app.delete("/presets/{preset_id}")
 def delete_preset(preset_id: int, username: str, db: Session = Depends(get_db)):
