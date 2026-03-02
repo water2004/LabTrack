@@ -250,12 +250,25 @@
         <el-form-item label="预设名称">
           <el-input v-model="editingPreset.name" />
         </el-form-item>
+        <el-form-item label="包含设备">
+          <el-select
+            v-model="editingPreset.device_ids_array"
+            multiple
+            filterable
+            placeholder="搜索并选择设备"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in devices"
+              :key="item.id"
+              :label="`${item.name} (${item.asset_code})`"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="预设备注">
           <el-input v-model="editingPreset.notes" type="textarea" placeholder="备注实验用途、注意事项等" />
         </el-form-item>
-        <div style="font-size: 12px; color: #909399;">
-          包含设备 ID: {{ editingPreset.device_ids }}
-        </div>
       </el-form>
       <template #footer>
         <el-button @click="showEditPreset = false">取消</el-button>
@@ -528,17 +541,22 @@ const deletePreset = async (id: number) => {
 };
 
 const openEditPreset = (preset: any) => {
-  editingPreset.value = { ...preset };
+  editingPreset.value = { 
+    ...preset,
+    device_ids_array: preset.device_ids.split(',').map((id: string) => parseInt(id))
+  };
   showEditPreset.value = true;
 };
 
 const handleUpdatePreset = async () => {
-  if (!editingPreset.value.name) return;
+  if (!editingPreset.value.name || !editingPreset.value.device_ids_array.length) {
+    return ElMessage.warning('请填写名称并至少选择一个设备');
+  }
   loading.value = true;
   try {
     await api.put(`/presets/${editingPreset.value.id}?username=${username}`, {
       name: editingPreset.value.name,
-      device_ids: editingPreset.value.device_ids,
+      device_ids: editingPreset.value.device_ids_array.join(','),
       notes: editingPreset.value.notes
     });
     ElMessage.success('预设更新成功');
