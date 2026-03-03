@@ -196,8 +196,13 @@
         <el-form-item label="设备名称">
           <el-input v-model="newDevice.name" placeholder="如: 恒温摇床" />
         </el-form-item>
-        <el-form-item label="资产编号">
-          <el-input v-model="newDevice.asset_code" placeholder="扫描或输入资产标签号" />
+        <el-form-item label="资产编号 (可选)">
+          <div style="display: flex; gap: 8px;">
+            <el-input v-model="newDevice.asset_code" placeholder="扫描或输入资产标签号" />
+            <el-button type="primary" plain @click="openScanner('add')">
+               <el-icon><FullScreen /></el-icon> 扫码
+            </el-button>
+          </div>
         </el-form-item>
         <el-form-item label="存放位置">
           <el-input v-model="newDevice.location" placeholder="如: 302" />
@@ -223,6 +228,18 @@
       </div>
 
       <el-form :model="editingDevice" label-width="80px" label-position="top">
+        <el-form-item label="系统 ID (UUID)">
+          <el-tag type="info">{{ editingDevice.uuid }}</el-tag>
+          <span style="font-size: 12px; color: #909399; margin-left: 8px;">(永久唯一标识)</span>
+        </el-form-item>
+        <el-form-item label="资产编号 (Asset Code)">
+          <div style="display: flex; gap: 8px;">
+            <el-input v-model="editingDevice.asset_code" placeholder="未分配标签" />
+            <el-button type="primary" plain @click="openScanner('edit')">
+               <el-icon><FullScreen /></el-icon> 扫码
+            </el-button>
+          </div>
+        </el-form-item>
         <el-form-item label="设备名称">
           <el-input v-model="editingDevice.name" />
         </el-form-item>
@@ -255,6 +272,22 @@
         <el-button @click="showEditDevice = false">取消</el-button>
         <el-button type="primary" @click="handleUpdate" :loading="loading">保存修改</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 条形码扫描模拟/对话框 -->
+    <el-dialog v-model="scannerVisible" title="扫描条形码" width="300px" center append-to-body @opened="focusScanner">
+      <div style="text-align: center;">
+        <el-icon :size="60" color="#409EFF"><FullScreen /></el-icon>
+        <p style="margin-top: 15px; font-size: 14px;">请使用扫码枪扫描设备标签</p>
+        <el-input 
+          ref="scannerInput" 
+          v-model="scanValue" 
+          @keyup.enter="handleScanFinish" 
+          placeholder="等待扫码..."
+          style="position: absolute; opacity: 0; left: -9999px;"
+        />
+        <div class="scanner-dot"></div>
+      </div>
     </el-dialog>
 
     <!-- 编辑预设弹窗 -->
@@ -331,7 +364,7 @@ import api from '../api';
 import { 
   Search, Check, VideoPlay, Plus, Picture, Location, User, 
   Right, CircleCheckFilled, Collection, Delete, ElementPlus,
-  Edit, Setting, Files, Camera
+  Edit, Setting, Files, Camera, FullScreen
 } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
@@ -358,6 +391,33 @@ const selectedFile = ref<File | null>(null);
 const showLinkDialog = ref(false);
 const shareLink = ref('');
 const pendingNotes = ref('');
+
+// 扫码相关
+const scannerVisible = ref(false);
+const scanValue = ref('');
+const scannerTarget = ref<'add' | 'edit'>('add');
+const scannerInput = ref<any>(null);
+
+const openScanner = (target: 'add' | 'edit') => {
+  scannerTarget.value = target;
+  scanValue.value = '';
+  scannerVisible.value = true;
+};
+
+const focusScanner = () => {
+  scannerInput.value?.focus();
+};
+
+const handleScanFinish = () => {
+  if (!scanValue.value) return;
+  if (scannerTarget.value === 'add') {
+    newDevice.value.asset_code = scanValue.value;
+  } else {
+    editingDevice.value.asset_code = scanValue.value;
+  }
+  scannerVisible.value = false;
+  ElMessage.success('扫码成功: ' + scanValue.value);
+};
 
 const filteredDevices = computed(() => {
   let list = devices.value;
@@ -462,8 +522,9 @@ const handleUpdate = async () => {
     formData.append('name', editingDevice.value.name);
     formData.append('location', editingDevice.value.location || '');
     formData.append('manager', editingDevice.value.manager || '');
+    formData.append('asset_code', editingDevice.value.asset_code || ''); // 允许为空
     formData.append('status', editingDevice.value.status.toString());
-    formData.append('username', username || ''); // 新增：传递当前操作者身份
+    formData.append('username', username || '');
     if (selectedFile.value) {
       formData.append('image', selectedFile.value);
     }
@@ -472,21 +533,21 @@ const handleUpdate = async () => {
     ElMessage.success('更新成功');
     showEditDevice.value = false;
     fetchDevices();
-  } catch (err) {
-    ElMessage.error('更新失败');
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || '更新失败');
   } finally {
     loading.value = false;
   }
 };
 
 const addDevice = async () => {
-  if (!newDevice.value.name || !newDevice.value.asset_code) {
-    return ElMessage.warning('请填写名称和资产编号');
+  if (!newDevice.value.name) {
+    return ElMessage.warning('请填写设备名称');
   }
   loading.value = true;
   const formData = new FormData();
   formData.append('name', newDevice.value.name);
-  formData.append('asset_code', newDevice.value.asset_code);
+  formData.append('asset_code', newDevice.value.asset_code || ''); // 资产编号现在是可选的
   formData.append('location', newDevice.value.location || '');
   formData.append('manager', username || '');
   if (selectedFile.value) {
@@ -500,8 +561,8 @@ const addDevice = async () => {
     newDevice.value = { name: '', asset_code: '', location: '', manager: username };
     selectedFile.value = null;
     fetchDevices();
-  } catch (err) {
-    ElMessage.error('录入失败，资产编号可能已存在');
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || '录入失败');
   } finally {
     loading.value = false;
   }
@@ -1117,5 +1178,20 @@ onMounted(() => {
 .slide-up-leave-to {
   transform: translate(-50%, 100%);
   opacity: 0;
+}
+.scanner-dot {
+  width: 100%;
+  height: 2px;
+  background: #409EFF;
+  position: absolute;
+  top: 50%;
+  left: 0;
+  box-shadow: 0 0 15px #409EFF;
+  animation: scan-move 2s infinite ease-in-out;
+}
+@keyframes scan-move {
+  0% { transform: translateY(-40px); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(40px); opacity: 0; }
 }
 </style>

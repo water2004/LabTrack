@@ -15,7 +15,7 @@ class User(UserBase):
         from_attributes = True
 
 class EquipmentBase(BaseModel):
-    asset_code: str
+    asset_code: Optional[str] = None # 改为可选
     name: str
     location: Optional[str] = None
     manager: Optional[str] = None
@@ -25,6 +25,7 @@ class EquipmentCreate(EquipmentBase):
 
 class Equipment(EquipmentBase):
     id: int
+    uuid: str # 必须返回 uuid
     image_path: Optional[str] = None
     status: int
     class Config:

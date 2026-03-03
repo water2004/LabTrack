@@ -17,7 +17,8 @@ class SystemConfig(Base):
 class Equipment(Base):
     __tablename__ = "equipments"
     id = Column(Integer, primary_key=True, index=True)
-    asset_code = Column(String, unique=True, index=True)
+    uuid = Column(String, unique=True, index=True) # 永久唯一标识
+    asset_code = Column(String, unique=True, index=True, nullable=True) # 可选资产编号
     name = Column(String, index=True)
     image_path = Column(String, nullable=True)
     location = Column(String, nullable=True)

@@ -74,7 +74,9 @@ def get_devices(q: str = None, db: Session = Depends(get_db)):
     query = db.query(models.Equipment)
     if q:
         query = query.filter(
-            (models.Equipment.name.contains(q)) | (models.Equipment.asset_code.contains(q))
+            (models.Equipment.name.contains(q)) | 
+            (models.Equipment.asset_code.contains(q)) |
+            (models.Equipment.uuid.contains(q))
         )
     return query.all()
 
@@ -101,7 +103,17 @@ def update_device(
              raise HTTPException(status_code=403, detail="Only the manager or admin can update this device")
 
     if name is not None: device.name = name
-    if asset_code is not None: device.asset_code = asset_code
+    
+    # 资产编号修改校验
+    if asset_code is not None:
+        if asset_code != "" and asset_code != device.asset_code:
+            existing = db.query(models.Equipment).filter(models.Equipment.asset_code == asset_code).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Asset code already exists")
+            device.asset_code = asset_code
+        elif asset_code == "":
+            device.asset_code = None
+
     if location is not None: device.location = location
     
     # 负责人转让校验
@@ -278,12 +290,21 @@ def list_users(db: Session = Depends(get_db)):
 @app.post("/admin/devices")
 def add_device(
     name: str = Form(...), 
-    asset_code: str = Form(...), 
+    asset_code: str = Form(None), # 改为可选
     location: str = Form(None), 
     manager: str = Form(None),
     image: UploadFile = File(None),
     db: Session = Depends(get_db)
 ):
+    # 自动生成短 UUID 替代纯 ID 作为永久标识
+    device_uuid = str(uuid.uuid4())[:8].upper() 
+    
+    # 如果提供了资产编号，检查唯一性
+    if asset_code:
+        existing = db.query(models.Equipment).filter(models.Equipment.asset_code == asset_code).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Asset code already exists")
+
     image_path = None
     if image:
         file_ext = image.filename.split(".")[-1]
@@ -294,8 +315,9 @@ def add_device(
         image_path = f"/static/uploads/{file_name}"
 
     device = models.Equipment(
+        uuid=device_uuid, # 系统自动分配
         name=name,
-        asset_code=asset_code,
+        asset_code=asset_code if asset_code else None,
         location=location,
         manager=manager,
         image_path=image_path,
