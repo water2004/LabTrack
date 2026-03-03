@@ -229,6 +229,19 @@
         <el-form-item label="存放位置">
           <el-input v-model="editingDevice.location" />
         </el-form-item>
+        <el-form-item label="负责人转让">
+          <el-select v-model="editingDevice.manager" placeholder="选择新的负责人" style="width: 100%">
+            <el-option
+              v-for="user in users"
+              :key="user.id"
+              :label="user.username"
+              :value="user.username"
+            />
+          </el-select>
+          <p style="font-size: 12px; color: #F56C6C; margin-top: 4px;" v-if="editingDevice.manager !== username">
+            注意：转让后您将失去该设备的编辑权限
+          </p>
+        </el-form-item>
         <el-form-item label="设备状态">
           <el-select v-model="editingDevice.status" style="width: 100%">
             <el-option :value="0" label="闲置 (正常使用)" />
@@ -332,6 +345,7 @@ const activeTab = ref('devices');
 const deviceFilter = ref('all');
 const presets = ref<any[]>([]);
 
+const users = ref<any[]>([]);
 const showAddDevice = ref(false);
 const showEditDevice = ref(false);
 const showEditPreset = ref(false);
@@ -356,6 +370,11 @@ const filteredDevices = computed(() => {
 const fetchDevices = async () => {
   const res = await api.get('/devices', { params: { q: searchQuery.value } });
   devices.value = res.data;
+};
+
+const fetchUsers = async () => {
+  const res = await api.get('/admin/users');
+  users.value = res.data;
 };
 
 const fetchActiveGroups = async () => {
@@ -417,17 +436,34 @@ const openEdit = (device: any) => {
   editingDevice.value = { ...device };
   previewUrl.value = device.image_path ? `http://localhost:8000${device.image_path}` : '';
   selectedFile.value = null;
+  fetchUsers();
   showEditDevice.value = true;
 };
 
 const handleUpdate = async () => {
   if (!editingDevice.value.name) return;
+  
+  // 如果负责人发生变更，增加确认步骤
+  if (editingDevice.value.manager !== username) {
+    try {
+      await ElMessageBox.confirm(
+        `确定将该设备转让给 ${editingDevice.value.manager} 吗？转让后您将失去编辑权限。`,
+        '确认转让',
+        { confirmButtonText: '确定转让', cancelButtonText: '取消', type: 'warning' }
+      );
+    } catch {
+      return;
+    }
+  }
+
   loading.value = true;
   try {
     const formData = new FormData();
     formData.append('name', editingDevice.value.name);
     formData.append('location', editingDevice.value.location || '');
+    formData.append('manager', editingDevice.value.manager || '');
     formData.append('status', editingDevice.value.status.toString());
+    formData.append('username', username || ''); // 新增：传递当前操作者身份
     if (selectedFile.value) {
       formData.append('image', selectedFile.value);
     }

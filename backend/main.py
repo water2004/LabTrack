@@ -87,16 +87,32 @@ def update_device(
     manager: str = Form(None),
     status: int = Form(None),
     image: UploadFile = File(None),
+    username: str = Form(None), # 接收当前操作者用户名用于校验
     db: Session = Depends(get_db)
 ):
     device = db.query(models.Equipment).filter(models.Equipment.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     
+    # 权限校验：只有当前负责人或管理员（简单处理，如果提供了username）可以修改
+    if username and device.manager and device.manager != username:
+         # 如果不是负责人，检查是否是管理员（这里简单对比，实际可更严谨）
+         if username != "admin": 
+             raise HTTPException(status_code=403, detail="Only the manager or admin can update this device")
+
     if name is not None: device.name = name
     if asset_code is not None: device.asset_code = asset_code
     if location is not None: device.location = location
-    if manager is not None: device.manager = manager
+    
+    # 负责人转让校验
+    if manager is not None:
+        if manager != "":
+            # 检查目标用户是否存在
+            target_user = db.query(models.User).filter(models.User.username == manager).first()
+            if not target_user:
+                raise HTTPException(status_code=400, detail=f"User '{manager}' does not exist")
+        device.manager = manager
+
     if status is not None: device.status = int(status)
     
     if image:
