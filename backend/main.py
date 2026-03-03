@@ -15,11 +15,15 @@ from database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
 
+# Static files for uploads
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "static/uploads")
+DB_FILE = os.getenv("DATABASE_URL", "sqlite:///./labtrack.db").replace("sqlite:///", "")
+
 # 简单的数据库迁移：确保 notes 列存在
 def migrate_db():
     import sqlite3
     try:
-        conn = sqlite3.connect('labtrack.db')
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         for table in ['active_sessions', 'usage_records', 'presets']:
             try:
@@ -44,10 +48,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files for uploads
-UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static/uploads", StaticFiles(directory=UPLOAD_DIR), name="static")
 
 # Auth Helpers (Simple for initial version)
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "LabAdmin2024")

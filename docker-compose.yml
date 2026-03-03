@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      network: host
+    container_name: labtrack-backend
+    restart: always
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:////app/data/labtrack.db
+      - UPLOAD_DIR=/app/data/uploads
+      - ADMIN_PASSWORD=LabAdmin2024
+
+  frontend:
+    build:
+      context: ./frontend
+      network: host
+      args:
+        - VITE_API_BASE_URL=/api
+    container_name: labtrack-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
