@@ -296,8 +296,8 @@ def add_device(
     image: UploadFile = File(None),
     db: Session = Depends(get_db)
 ):
-    # 自动生成短 UUID 替代纯 ID 作为永久标识
-    device_uuid = str(uuid.uuid4())[:8].upper() 
+    # 使用完整 UUID 确保绝对唯一性
+    device_uuid = str(uuid.uuid4()).upper() 
     
     # 如果提供了资产编号，检查唯一性
     if asset_code:
@@ -315,7 +315,7 @@ def add_device(
         image_path = f"/static/uploads/{file_name}"
 
     device = models.Equipment(
-        uuid=device_uuid, # 系统自动分配
+        uuid=device_uuid, # 系统自动分配完整 UUID
         name=name,
         asset_code=asset_code if asset_code else None,
         location=location,

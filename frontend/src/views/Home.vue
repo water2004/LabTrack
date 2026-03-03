@@ -275,18 +275,19 @@
     </el-dialog>
 
     <!-- 条形码扫描模拟/对话框 -->
-    <el-dialog v-model="scannerVisible" title="扫描条形码" width="300px" center append-to-body @opened="focusScanner">
+    <el-dialog 
+      v-model="scannerVisible" 
+      title="扫描条形码/二维码" 
+      width="90%" 
+      style="max-width: 400px" 
+      center 
+      append-to-body 
+      @opened="startCamera" 
+      @closed="handleScannerClose"
+    >
       <div style="text-align: center;">
-        <el-icon :size="60" color="#409EFF"><FullScreen /></el-icon>
-        <p style="margin-top: 15px; font-size: 14px;">请使用扫码枪扫描设备标签</p>
-        <el-input 
-          ref="scannerInput" 
-          v-model="scanValue" 
-          @keyup.enter="handleScanFinish" 
-          placeholder="等待扫码..."
-          style="position: absolute; opacity: 0; left: -9999px;"
-        />
-        <div class="scanner-dot"></div>
+        <div id="reader" style="width: 100%; border-radius: 8px; overflow: hidden;"></div>
+        <p style="margin-top: 15px; font-size: 14px; color: #606266;">将条码置于框内即可自动识别</p>
       </div>
     </el-dialog>
 
@@ -361,6 +362,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api';
+import { Html5Qrcode } from 'html5-qrcode';
 import { 
   Search, Check, VideoPlay, Plus, Picture, Location, User, 
   Right, CircleCheckFilled, Collection, Delete, ElementPlus,
@@ -394,29 +396,56 @@ const pendingNotes = ref('');
 
 // 扫码相关
 const scannerVisible = ref(false);
-const scanValue = ref('');
 const scannerTarget = ref<'add' | 'edit'>('add');
-const scannerInput = ref<any>(null);
+let html5QrCode: Html5Qrcode | null = null;
 
 const openScanner = (target: 'add' | 'edit') => {
   scannerTarget.value = target;
-  scanValue.value = '';
   scannerVisible.value = true;
 };
 
-const focusScanner = () => {
-  scannerInput.value?.focus();
+const startCamera = async () => {
+  html5QrCode = new Html5Qrcode("reader");
+  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+  
+  try {
+    await html5QrCode.start(
+      { facingMode: "environment" }, 
+      config,
+      (decodedText) => {
+        // 扫码成功回调
+        if (scannerTarget.value === 'add') {
+          newDevice.value.asset_code = decodedText;
+        } else {
+          editingDevice.value.asset_code = decodedText;
+        }
+        stopCamera();
+        scannerVisible.value = false;
+        ElMessage.success('识别成功: ' + decodedText);
+      },
+      (errorMessage) => {
+        // 扫码中，暂无结果
+      }
+    );
+  } catch (err) {
+    ElMessage.error('无法启动摄像头，请确保已授权');
+    scannerVisible.value = false;
+  }
 };
 
-const handleScanFinish = () => {
-  if (!scanValue.value) return;
-  if (scannerTarget.value === 'add') {
-    newDevice.value.asset_code = scanValue.value;
-  } else {
-    editingDevice.value.asset_code = scanValue.value;
+const stopCamera = async () => {
+  if (html5QrCode) {
+    try {
+      await html5QrCode.stop();
+      html5QrCode = null;
+    } catch (err) {
+      console.error(err);
+    }
   }
-  scannerVisible.value = false;
-  ElMessage.success('扫码成功: ' + scanValue.value);
+};
+
+const handleScannerClose = () => {
+  stopCamera();
 };
 
 const filteredDevices = computed(() => {
