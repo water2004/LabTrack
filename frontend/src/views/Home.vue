@@ -375,20 +375,20 @@
             class="selection-box" 
             :style="selectionStyle"
             @mousedown.stop="e => startDrag(e.clientX, e.clientY)"
-            @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY)"
+            @touchstart.stop="e => e.touches && e.touches[0] && startDrag(e.touches[0].clientX, e.touches[0].clientY)"
           >
             <div class="selection-handle top-left" 
               @mousedown.stop="e => startDrag(e.clientX, e.clientY, 'resize', 'top-left')"
-              @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'top-left')"></div>
+              @touchstart.stop="e => e.touches && e.touches[0] && startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'top-left')"></div>
             <div class="selection-handle top-right"
               @mousedown.stop="e => startDrag(e.clientX, e.clientY, 'resize', 'top-right')"
-              @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'top-right')"></div>
+              @touchstart.stop="e => e.touches && e.touches[0] && startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'top-right')"></div>
             <div class="selection-handle bottom-left"
               @mousedown.stop="e => startDrag(e.clientX, e.clientY, 'resize', 'bottom-left')"
-              @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'bottom-left')"></div>
+              @touchstart.stop="e => e.touches && e.touches[0] && startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'bottom-left')"></div>
             <div class="selection-handle bottom-right"
               @mousedown.stop="e => startDrag(e.clientX, e.clientY, 'resize', 'bottom-right')"
-              @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'bottom-right')"></div>
+              @touchstart.stop="e => e.touches && e.touches[0] && startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'bottom-right')"></div>
             <div class="scan-line-anim"></div>
           </div>
         </div>
@@ -483,7 +483,9 @@ const handleGlobalTouchMove = (e: TouchEvent) => {
   if (!isDragging) return;
   e.preventDefault();
   const touch = e.touches[0];
-  updateSelection(touch.clientX, touch.clientY);
+  if (touch) {
+    updateSelection(touch.clientX, touch.clientY);
+  }
 };
 
 const updateSelection = (clientX: number, clientY: number) => {
@@ -616,7 +618,8 @@ const confirmCropAndScan = async () => {
         Html5QrcodeSupportedFormats.UPC_E,
         Html5QrcodeSupportedFormats.ITF,
         Html5QrcodeSupportedFormats.QR_CODE
-      ]
+      ],
+      verbose: false
     });
 
     const result = await html5QrCode.scanFileV2(fileToScan, false);
