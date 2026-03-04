@@ -5,7 +5,7 @@
       <el-input v-model="password" type="password" placeholder="请输入管理密码" @keyup.enter="handleLogin" show-password />
       <el-button type="primary" @click="handleLogin" style="width: 100%; margin-top: 20px;">验证</el-button>
       <div style="margin-top: 20px; text-align: center;">
-        <el-link type="info" @click="$router.push('/login')">返回用户登录</el-link>
+        <el-link type="info" underline="never" @click="$router.push('/login')">返回用户登录</el-link>
       </div>
     </el-card>
   </div>

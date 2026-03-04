@@ -16,17 +16,17 @@ const router = createRouter({
   routes,
 });
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach((to, _from) => {
   const token = localStorage.getItem('token');
-  const isAdminToken = localStorage.getItem('isAdmin');
+  const isAdminToken = localStorage.getItem('isAdmin') === 'true';
 
   if (to.path === '/admin' && !isAdminToken) {
-    next('/admin-login');
+    return '/admin-login';
   } else if (to.path !== '/login' && to.path !== '/admin-login' && !token && !isAdminToken) {
-    next('/login');
-  } else {
-    next();
+    return '/login';
   }
+  return true;
 });
+
 
 export default router;

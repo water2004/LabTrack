@@ -34,9 +34,9 @@
         
         <div class="login-footer">
           <span class="tip">还没有账号？</span>
-          <el-link type="primary" :underline="false" @click="ElMessage.info('请联系管理员为您添加账号')">如何获取？</el-link>
+          <el-link type="primary" underline="never" @click="ElMessage.info('请联系管理员为您添加账号')">如何获取？</el-link>
           <div class="divider"></div>
-          <el-link type="info" :underline="false" @click="$router.push('/admin-login')">管理后台入口</el-link>
+          <el-link type="info" underline="never" @click="$router.push('/admin-login')">管理后台入口</el-link>
         </div>
       </div>
     </el-card>

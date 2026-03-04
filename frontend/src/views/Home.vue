@@ -33,8 +33,8 @@
         <el-tab-pane label="设备浏览" name="devices">
           <div class="toolbar">
             <el-radio-group v-model="deviceFilter" size="large" class="custom-radio">
-              <el-radio-button label="all">全部设备</el-radio-button>
-              <el-radio-button label="mine">我负责的</el-radio-button>
+              <el-radio-button value="all">全部设备</el-radio-button>
+              <el-radio-button value="mine">我负责的</el-radio-button>
             </el-radio-group>
             
             <el-input 
@@ -173,7 +173,7 @@
       </el-tabs>
 
       <div class="admin-footer">
-        <el-link type="info" :underline="false" @click="$router.push('/admin-login')">
+        <el-link type="info" underline="never" @click="$router.push('/admin-login')">
           <el-icon><Setting /></el-icon> 管理后台
         </el-link>
       </div>
