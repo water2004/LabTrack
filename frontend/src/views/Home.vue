@@ -176,6 +176,12 @@
         <el-link type="info" underline="never" @click="$router.push('/admin-login')">
           <el-icon><Setting /></el-icon> 管理后台
         </el-link>
+        <div class="footer-info">
+          <el-link href="https://github.com/water2004/LabTrack" target="_blank" type="info" underline="never">
+            Powered by LabTrack
+          </el-link>
+          <span class="version-badge">v1.1.0</span>
+        </div>
       </div>
     </main>
 
@@ -1019,6 +1025,32 @@ onMounted(() => {
   margin-top: 40px;
   padding: 20px;
   border-top: 1px solid #ebeef5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.footer-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 0.7;
+}
+.version-badge {
+  font-size: 11px;
+  color: #a8abb2;
+  border: 1px solid #e4e7ed;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  letter-spacing: 0.5px;
+  background: #fff;
+  transition: all 0.3s;
+}
+.version-badge:hover {
+  color: #409EFF;
+  border-color: #c6e2ff;
+  background: #ecf5ff;
 }
 
 /* 工具栏 */
