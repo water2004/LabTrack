@@ -1,0 +1,20 @@
+services:
+  backend:
+    image: ghcr.io/water2004/labtrack-backend:latest
+    container_name: labtrack-backend
+    restart: always
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:////app/data/labtrack.db
+      - UPLOAD_DIR=/app/data/uploads
+      - ADMIN_PASSWORD=LabAdmin2024
+
+  frontend:
+    image: ghcr.io/water2004/labtrack-frontend:latest
+    container_name: labtrack-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend

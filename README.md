@@ -4,14 +4,29 @@
 
 ## 快速启动
 
-### 1. 后端 (FastAPI)
+### 方式一：Docker 一键部署 (推荐)
+直接使用 GitHub Container Registry (GHCR) 的预构建镜像部署：
+
+1. **下载 `docker-compose.yml`** (或直接克隆本仓库)
+2. **启动容器**:
+   ```bash
+   docker compose up -d
+   ```
+   *注意：默认使用 `ghcr.io/water2004/labtrack-frontend:latest` 和 `ghcr.io/water2004/labtrack-backend:latest`。*
+
+### 方式二：本地构建部署
+1. 进入项目根目录。
+2. 执行: `docker compose up -d --build`
+
+### 方式三：手动分步启动
+#### 1. 后端 (FastAPI)
 1. 进入 `backend` 目录。
 2. 安装依赖: `pip install -r requirements.txt`
 3. 启动服务: `python main.py`
    - 服务运行在: `http://localhost:8000`
    - 管理员默认密码: `LabAdmin2024` (可通过环境变量 `ADMIN_PASSWORD` 修改)
 
-### 2. 前端 (Vue 3)
+#### 2. 前端 (Vue 3)
 1. 进入 `frontend` 目录。
 2. 安装依赖: `npm install`
 3. 启动开发服务器: `npm run dev`

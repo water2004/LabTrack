@@ -15,10 +15,18 @@
    ```
 
 2. **一键启动**
+
+   **方式 A：使用本地构建 (克隆仓库后执行)**
    ```bash
-   docker-compose up -d --build
+   docker compose up -d --build
    ```
    *注：构建配置中已开启 `network: host`，以避开容器内网络下载依赖包慢或失败的问题。*
+
+   **方式 B：直接使用 GHCR 镜像部署 (无需克隆完整仓库，仅需 `docker-compose.ghcr.yml`)**
+   ```bash
+   # 如果没有克隆仓库，可以单独下载该文件
+   docker compose -f docker-compose.ghcr.yml up -d
+   ```
 
 3. **访问地址**
    - 前端页面：`http://localhost`
