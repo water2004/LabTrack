@@ -59,7 +59,7 @@
                 @click="device.status === 0 && toggleSelection(device)"
               >
                 <div class="card-image-wrapper">
-                  <img v-if="device.image_path" :src="`http://localhost:8000${device.image_path}`" class="device-img" />
+                  <img v-if="device.image_path" :src="`${baseURL}${device.image_path}`" class="device-img" />
                   <div v-else class="no-img-placeholder">
                     <el-icon :size="40" color="#dcdfe6"><Picture /></el-icon>
                   </div>
@@ -357,7 +357,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import api from '../api';
+import api, { baseURL } from '../api';
 import { Html5Qrcode } from 'html5-qrcode';
 import { 
   Search, Check, VideoPlay, Plus, Picture, Location, User, 
@@ -492,7 +492,7 @@ const handleFileUpload = (event: any) => {
 
 const openEdit = (device: any) => {
   editingDevice.value = { ...device };
-  previewUrl.value = device.image_path ? `http://localhost:8000${device.image_path}` : '';
+  previewUrl.value = device.image_path ? `${baseURL}${device.image_path}` : '';
   selectedFile.value = null;
   fetchUsers();
   showEditDevice.value = true;

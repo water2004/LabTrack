@@ -202,7 +202,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import api from '../api';
+import api, { baseURL } from '../api';
 import { ElMessage } from 'element-plus';
 import { 
   ElementPlus, Monitor, User, DataLine, SwitchButton, 
@@ -279,7 +279,7 @@ const addUser = async () => {
 };
 
 const exportExcel = () => {
-  let url = 'http://localhost:8000/admin/export';
+  let url = `${baseURL}/admin/export`;
   if (dateRange.value && dateRange.value.length === 2) {
     url += `?start_date=${dateRange.value[0]}&end_date=${dateRange.value[1]}`;
   }
@@ -287,7 +287,7 @@ const exportExcel = () => {
 };
 
 const viewQR = (id: number) => {
-  const url = `http://localhost:5173/?id=${id}`;
+  const url = `${window.location.origin}/?id=${id}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}`;
   window.open(qrUrl, '_blank');
 };
