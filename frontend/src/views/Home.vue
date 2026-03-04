@@ -351,6 +351,48 @@
 
     <!-- 用于文件识别的隐藏容器 -->
     <div id="reader-hidden" style="display: none;"></div>
+
+    <!-- 裁剪框选对话框 -->
+    <el-dialog 
+      v-model="showCropDialog" 
+      title="框选条形码区域" 
+      width="90%" 
+      style="max-width: 500px" 
+      center 
+      :close-on-click-modal="false"
+      append-to-body
+    >
+      <div class="crop-container">
+        <div class="crop-wrapper" ref="cropWrapper">
+          <img :src="cropSourceUrl" ref="cropImg" class="crop-image" @load="initCropBox" />
+          <div 
+            class="selection-box" 
+            :style="selectionStyle"
+            @mousedown.stop="e => startDrag(e.clientX, e.clientY)"
+            @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY)"
+          >
+            <div class="selection-handle top-left" 
+              @mousedown.stop="e => startDrag(e.clientX, e.clientY, 'resize', 'top-left')"
+              @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'top-left')"></div>
+            <div class="selection-handle top-right"
+              @mousedown.stop="e => startDrag(e.clientX, e.clientY, 'resize', 'top-right')"
+              @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'top-right')"></div>
+            <div class="selection-handle bottom-left"
+              @mousedown.stop="e => startDrag(e.clientX, e.clientY, 'resize', 'bottom-left')"
+              @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'bottom-left')"></div>
+            <div class="selection-handle bottom-right"
+              @mousedown.stop="e => startDrag(e.clientX, e.clientY, 'resize', 'bottom-right')"
+              @touchstart.stop="e => startDrag(e.touches[0].clientX, e.touches[0].clientY, 'resize', 'bottom-right')"></div>
+            <div class="scan-line-anim"></div>
+          </div>
+        </div>
+        <p class="crop-tip">手指拖动方框，对准条形码</p>
+      </div>
+      <template #footer>
+        <el-button @click="showCropDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmCropAndScan" :loading="scanning">开始识别</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -358,7 +400,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import api, { baseURL } from '../api';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { 
   Search, Check, VideoPlay, Plus, Picture, Location, User, 
   Right, CircleCheckFilled, Collection, Delete, ElementPlus,
@@ -390,6 +432,114 @@ const showLinkDialog = ref(false);
 const shareLink = ref('');
 const pendingNotes = ref('');
 
+// 扫码与裁剪逻辑
+const showCropDialog = ref(false);
+const cropSourceUrl = ref('');
+const cropImg = ref<HTMLImageElement | null>(null);
+const cropWrapper = ref<HTMLDivElement | null>(null);
+const scanning = ref(false);
+
+const selection = ref({ x: 50, y: 100, w: 200, h: 80 }); // 初始选择框位置
+const selectionStyle = computed(() => ({
+  left: `${selection.value.x}px`,
+  top: `${selection.value.y}px`,
+  width: `${selection.value.w}px`,
+  height: `${selection.value.h}px`
+}));
+
+let isDragging = false;
+let dragMode = 'move'; // 'move' 或 'resize'
+let resizeDir = ''; // 'top-left', 'top-right', etc.
+let startX = 0;
+let startY = 0;
+let startBox = { x: 0, y: 0, w: 0, h: 0 };
+
+const startDrag = (clientX: number, clientY: number, mode: 'move' | 'resize' = 'move', dir: string = '') => {
+  isDragging = true;
+  dragMode = mode;
+  resizeDir = dir;
+  startX = clientX;
+  startY = clientY;
+  startBox = { ...selection.value };
+  
+  window.addEventListener('mousemove', handleGlobalMove);
+  window.addEventListener('mouseup', stopDrag);
+  window.addEventListener('touchmove', handleGlobalTouchMove, { passive: false });
+  window.addEventListener('touchend', stopDrag);
+};
+
+const handleGlobalMove = (e: MouseEvent) => {
+  if (!isDragging) return;
+  updateSelection(e.clientX, e.clientY);
+};
+
+const handleGlobalTouchMove = (e: TouchEvent) => {
+  if (!isDragging) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  updateSelection(touch.clientX, touch.clientY);
+};
+
+const updateSelection = (clientX: number, clientY: number) => {
+  const dx = clientX - startX;
+  const dy = clientY - startY;
+  const container = cropWrapper.value;
+  if (!container) return;
+
+  if (dragMode === 'move') {
+    let newX = startBox.x + dx;
+    let newY = startBox.y + dy;
+    newX = Math.max(0, Math.min(newX, container.clientWidth - selection.value.w));
+    newY = Math.max(0, Math.min(newY, container.clientHeight - selection.value.h));
+    selection.value.x = newX;
+    selection.value.y = newY;
+  } else if (dragMode === 'resize') {
+    const minSize = 40;
+    let { x, y, w, h } = { ...startBox };
+
+    if (resizeDir.includes('right')) {
+      w = Math.max(minSize, Math.min(startBox.w + dx, container.clientWidth - startBox.x));
+    }
+    if (resizeDir.includes('bottom')) {
+      h = Math.max(minSize, Math.min(startBox.h + dy, container.clientHeight - startBox.y));
+    }
+    if (resizeDir.includes('left')) {
+      const maxDx = startBox.w - minSize;
+      const validDx = Math.max(-startBox.x, Math.min(dx, maxDx));
+      x = startBox.x + validDx;
+      w = startBox.w - validDx;
+    }
+    if (resizeDir.includes('top')) {
+      const maxDy = startBox.h - minSize;
+      const validDy = Math.max(-startBox.y, Math.min(dy, maxDy));
+      y = startBox.y + validDy;
+      h = startBox.h - validDy;
+    }
+
+    selection.value = { x, y, w, h };
+  }
+};
+
+const stopDrag = () => {
+  isDragging = false;
+  window.removeEventListener('mousemove', handleGlobalMove);
+  window.removeEventListener('mouseup', stopDrag);
+  window.removeEventListener('touchmove', handleGlobalTouchMove);
+  window.removeEventListener('touchend', stopDrag);
+};
+
+const initCropBox = () => {
+  const container = cropWrapper.value;
+  if (container) {
+    selection.value = {
+      x: (container.clientWidth - 250) / 2,
+      y: (container.clientHeight - 100) / 2,
+      w: 250,
+      h: 100
+    };
+  }
+};
+
 // 扫码相关
 const scannerFileInput = ref<HTMLInputElement | null>(null);
 const scannerTarget = ref<'add' | 'edit'>('add');
@@ -404,22 +554,81 @@ const openScanner = (target: 'add' | 'edit') => {
 const handleScannerFile = async (event: any) => {
   const file = event.target.files[0];
   if (!file) return;
+  
+  cropSourceUrl.value = URL.createObjectURL(file);
+  showCropDialog.value = true;
+};
 
-  const html5QrCode = new Html5Qrcode("reader-hidden"); // 需要一个隐藏的容器
+const confirmCropAndScan = async () => {
+  if (!cropImg.value || !cropWrapper.value) return;
+  scanning.value = true;
+
   try {
-    const result = await html5QrCode.scanFileV2(file, true);
-    const decodedText = result.decodedText;
+    const img = cropImg.value;
+    const scaleX = img.naturalWidth / img.clientWidth;
+    const scaleY = img.naturalHeight / img.clientHeight;
+    
+    // 1. 增加 15% 的缓冲区，防止边缘切割影响条码定位
+    const padding = 0.15;
+    let cropX = (selection.value.x - selection.value.w * padding / 2) * scaleX;
+    let cropY = (selection.value.y - selection.value.h * padding / 2) * scaleY;
+    let cropW = selection.value.w * (1 + padding) * scaleX;
+    let cropH = selection.value.h * (1 + padding) * scaleY;
+
+    // 边界检查
+    cropX = Math.max(0, cropX);
+    cropY = Math.max(0, cropY);
+    cropW = Math.min(img.naturalWidth - cropX, cropW);
+    cropH = Math.min(img.naturalHeight - cropY, cropH);
+
+    const canvas = document.createElement('canvas');
+    // 对于条形码，宽度分辨率更重要，固定一个高质量宽度
+    canvas.width = 1200;
+    canvas.height = (cropH / cropW) * 1200;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas Context Error');
+    
+    // 2. 图像增强：提高对比度和亮度，让条码黑白分明
+    ctx.filter = 'contrast(1.4) brightness(1.1)';
+    ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+    
+    const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.95));
+    if (!blob) throw new Error('Blob Error');
+
+    // 转换为 File 对象，满足 html5-qrcode 的严格类型检查
+    const fileToScan = new File([blob], "scan.jpg", { type: "image/jpeg" });
+
+    // 3. 配置识别引擎，开启所有常见条码格式
+    const html5QrCode = new Html5Qrcode("reader-hidden", {
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.QR_CODE
+      ]
+    });
+
+    const result = await html5QrCode.scanFileV2(fileToScan, false);
     
     if (scannerTarget.value === 'add') {
-      newDevice.value.asset_code = decodedText;
+      newDevice.value.asset_code = result.decodedText;
     } else {
-      editingDevice.value.asset_code = decodedText;
+      editingDevice.value.asset_code = result.decodedText;
     }
-    ElMessage.success('识别成功: ' + decodedText);
+    
+    ElMessage.success('解析成功: ' + result.decodedText);
+    showCropDialog.value = false;
+    html5QrCode.clear();
   } catch (err) {
-    ElMessage.error('未能识别条形码，请确保照片清晰');
+    console.error("Scan detailed error:", err);
+    ElMessage.error('该区域未识别到条码。建议：调整框选范围，包含完整的条码线条及少量留白');
   } finally {
-    // 重置 input 以便下次选择同一张图也能触发
+    scanning.value = false;
     if (scannerFileInput.value) scannerFileInput.value.value = '';
   }
 };
@@ -1167,6 +1376,69 @@ onMounted(() => {
   overflow: hidden;
   display: inline-block;
   width: 100%;
+}
+
+/* 扫码裁剪界面样式 */
+.crop-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+.crop-wrapper {
+  position: relative;
+  width: 100%;
+  max-height: 60vh;
+  background: #000;
+  overflow: hidden;
+  border-radius: 8px;
+  touch-action: none; /* 禁用默认触摸行为 */
+}
+.crop-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+}
+.selection-box {
+  position: absolute;
+  border: 2px solid #409EFF;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* 遮罩效果 */
+  cursor: move;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.selection-handle {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  background: #409EFF;
+  border-radius: 2px;
+}
+.top-left { top: -5px; left: -5px; }
+.top-right { top: -5px; right: -5px; }
+.bottom-left { bottom: -5px; left: -5px; }
+.bottom-right { bottom: -5px; right: -5px; }
+
+.scan-line-anim {
+  width: 100%;
+  height: 2px;
+  background: rgba(64, 158, 255, 0.8);
+  box-shadow: 0 0 10px #409EFF;
+  position: absolute;
+  animation: scan-vertical 2s infinite ease-in-out;
+}
+@keyframes scan-vertical {
+  0% { transform: translateY(-400%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(400%); opacity: 0; }
+}
+.crop-tip {
+  color: #909399;
+  font-size: 13px;
+  margin: 0;
 }
 
 /* 过渡动画 */
