@@ -274,22 +274,15 @@
       </template>
     </el-dialog>
 
-    <!-- 条形码扫描模拟/对话框 -->
-    <el-dialog 
-      v-model="scannerVisible" 
-      title="扫描条形码/二维码" 
-      width="90%" 
-      style="max-width: 400px" 
-      center 
-      append-to-body 
-      @opened="startCamera" 
-      @closed="handleScannerClose"
-    >
-      <div style="text-align: center;">
-        <div id="reader" style="width: 100%; border-radius: 8px; overflow: hidden;"></div>
-        <p style="margin-top: 15px; font-size: 14px; color: #606266;">将条码置于框内即可自动识别</p>
-      </div>
-    </el-dialog>
+    <!-- 条形码扫描（隐藏 input） -->
+    <input 
+      type="file" 
+      ref="scannerFileInput" 
+      hidden 
+      accept="image/*" 
+      capture="environment" 
+      @change="handleScannerFile" 
+    />
 
     <!-- 编辑预设弹窗 -->
     <el-dialog v-model="showEditPreset" title="编辑实验预设" width="400px" center>
@@ -355,6 +348,9 @@
         </template>
       </el-input>
     </el-dialog>
+
+    <!-- 用于文件识别的隐藏容器 -->
+    <div id="reader-hidden" style="display: none;"></div>
   </div>
 </template>
 
@@ -395,57 +391,37 @@ const shareLink = ref('');
 const pendingNotes = ref('');
 
 // 扫码相关
-const scannerVisible = ref(false);
+const scannerFileInput = ref<HTMLInputElement | null>(null);
 const scannerTarget = ref<'add' | 'edit'>('add');
-let html5QrCode: Html5Qrcode | null = null;
 
 const openScanner = (target: 'add' | 'edit') => {
   scannerTarget.value = target;
-  scannerVisible.value = true;
+  if (scannerFileInput.value) {
+    scannerFileInput.value.click();
+  }
 };
 
-const startCamera = async () => {
-  html5QrCode = new Html5Qrcode("reader");
-  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-  
+const handleScannerFile = async (event: any) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const html5QrCode = new Html5Qrcode("reader-hidden"); // 需要一个隐藏的容器
   try {
-    await html5QrCode.start(
-      { facingMode: "environment" }, 
-      config,
-      (decodedText) => {
-        // 扫码成功回调
-        if (scannerTarget.value === 'add') {
-          newDevice.value.asset_code = decodedText;
-        } else {
-          editingDevice.value.asset_code = decodedText;
-        }
-        stopCamera();
-        scannerVisible.value = false;
-        ElMessage.success('识别成功: ' + decodedText);
-      },
-      (_errorMessage) => {
-        // 扫码中，暂无结果
-      }
-    );
-  } catch (err) {
-    ElMessage.error('无法启动摄像头，请确保已授权');
-    scannerVisible.value = false;
-  }
-};
-
-const stopCamera = async () => {
-  if (html5QrCode) {
-    try {
-      await html5QrCode.stop();
-      html5QrCode = null;
-    } catch (err) {
-      console.error(err);
+    const result = await html5QrCode.scanFileV2(file, true);
+    const decodedText = result.decodedText;
+    
+    if (scannerTarget.value === 'add') {
+      newDevice.value.asset_code = decodedText;
+    } else {
+      editingDevice.value.asset_code = decodedText;
     }
+    ElMessage.success('识别成功: ' + decodedText);
+  } catch (err) {
+    ElMessage.error('未能识别条形码，请确保照片清晰');
+  } finally {
+    // 重置 input 以便下次选择同一张图也能触发
+    if (scannerFileInput.value) scannerFileInput.value.value = '';
   }
-};
-
-const handleScannerClose = () => {
-  stopCamera();
 };
 
 const filteredDevices = computed(() => {
