@@ -602,10 +602,10 @@ const startExperiment = async () => {
     const value = data.value;
     try {
       const ids = selectedDevices.value.map(d => d.id);
-      await api.post(`/experiment/start?username=${username}`, { 
+      await api.post('/experiment/start', { 
         device_ids: ids,
         notes: value || ''
-      });
+      }, { params: { username } });
       
       const baseUrl = window.location.origin + window.location.pathname;
       shareLink.value = `${baseUrl}?ids=${ids.join(',')}`;
@@ -629,7 +629,7 @@ const promptSavePreset = () => {
     const value = data.value;
     if (!value) return;
     const ids = selectedDevices.value.map(d => d.id).join(',');
-    await api.post(`/presets?username=${username}`, { name: value, device_ids: ids });
+    await api.post('/presets', { name: value, device_ids: ids }, { params: { username } });
     ElMessage.success('预设已保存');
     fetchPresets();
   });
@@ -656,7 +656,7 @@ const applyPreset = (preset: any) => {
 };
 
 const deletePreset = async (id: number) => {
-  await api.delete(`/presets/${id}?username=${username}`);
+  await api.delete(`/presets/${id}`, { params: { username } });
   ElMessage.success('预设已删除');
   fetchPresets();
 };
@@ -675,11 +675,11 @@ const handleUpdatePreset = async () => {
   }
   loading.value = true;
   try {
-    await api.put(`/presets/${editingPreset.value.id}?username=${username}`, {
+    await api.put(`/presets/${editingPreset.value.id}`, {
       name: editingPreset.value.name,
       device_ids: editingPreset.value.device_ids_array.join(','),
       notes: editingPreset.value.notes
-    });
+    }, { params: { username } });
     ElMessage.success('预设更新成功');
     showEditPreset.value = false;
     fetchPresets();
@@ -698,7 +698,7 @@ const stopGroup = async (group: any) => {
   }).then(async () => {
     try {
       const ids = group.devices.map((d: any) => d.id);
-      await api.post(`/experiment/stop?username=${username}`, { device_ids: ids });
+      await api.post('/experiment/stop', { device_ids: ids }, { params: { username } });
       ElMessage.success('实验已结束');
       fetchDevices();
       fetchActiveGroups();
