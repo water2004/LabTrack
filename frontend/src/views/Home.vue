@@ -598,7 +598,8 @@ const startExperiment = async () => {
     inputValue: pendingNotes.value,
     inputPattern: /\S+/,
     inputErrorMessage: '备注不能为空',
-  }).then(async ({ value }) => {
+  }).then(async (data: any) => {
+    const value = data.value;
     try {
       const ids = selectedDevices.value.map(d => d.id);
       await api.post(`/experiment/start?username=${username}`, { 
