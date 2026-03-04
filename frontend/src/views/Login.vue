@@ -38,6 +38,13 @@
           <div class="divider"></div>
           <el-link type="info" underline="never" @click="$router.push('/admin-login')">管理后台入口</el-link>
         </div>
+
+        <div class="powered-by">
+          <el-link href="https://github.com/water2004/LabTrack" target="_blank" type="info" underline="never">
+            Powered by LabTrack
+          </el-link>
+          <span class="version-badge">v1.1.0</span>
+        </div>
       </div>
     </el-card>
   </div>
@@ -169,5 +176,32 @@ const handleLogin = async () => {
   height: 12px;
   background: #dcdfe6;
   margin: 0 15px;
+}
+
+.powered-by {
+  margin-top: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid #f0f2f5;
+  padding-top: 20px;
+}
+
+.version-badge {
+  font-size: 11px;
+  color: #a8abb2;
+  border: 1px solid #e4e7ed;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: Arial, sans-serif;
+  letter-spacing: 0.5px;
+  background: #fff;
+  transition: all 0.3s;
+}
+.version-badge:hover {
+  color: #409EFF;
+  border-color: #c6e2ff;
+  background: #ecf5ff;
 }
 </style>
