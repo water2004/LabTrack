@@ -159,10 +159,10 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import api, { baseURL } from '../api';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus';
 import { 
   Setting, User, Box, Document, DataBoard, 
-  SwitchButton, Plus, Download 
+  SwitchButton
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
