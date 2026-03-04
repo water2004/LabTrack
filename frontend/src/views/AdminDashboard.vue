@@ -1,230 +1,193 @@
 <template>
   <div class="admin-container">
     <el-container class="admin-layout">
+      <!-- 侧边栏 -->
       <el-aside width="240px" class="admin-aside">
         <div class="logo-area">
-          <el-icon :size="24" color="#fff"><ElementPlus /></el-icon>
-          <h2>LabTrack</h2>
+          <el-icon :size="24" color="#fff"><Setting /></el-icon>
+          <span>管理控制台</span>
         </div>
-        <el-menu 
-          default-active="1" 
+        
+        <el-menu
+          :default-active="activeMenu"
           class="admin-menu"
+          @select="handleMenuSelect"
           background-color="#1f2937"
           text-color="#9ca3af"
           active-text-color="#fff"
         >
-          <div class="menu-label">管理中心</div>
-          <el-menu-item index="1" @click="activeTab = 'devices'">
-            <el-icon><Monitor /></el-icon> <span>设备管理</span>
+          <el-menu-item index="overview">
+            <el-icon><DataBoard /></el-icon>
+            <span>概览统计</span>
           </el-menu-item>
-          <el-menu-item index="2" @click="activeTab = 'users'">
-            <el-icon><User /></el-icon> <span>用户名单</span>
+          <el-menu-item index="users">
+            <el-icon><User /></el-icon>
+            <span>用户管理</span>
           </el-menu-item>
-          <el-menu-item index="3" @click="activeTab = 'records'">
-            <el-icon><DataLine /></el-icon> <span>使用记录</span>
+          <el-menu-item index="devices">
+            <el-icon><Box /></el-icon>
+            <span>资产列表</span>
           </el-menu-item>
-          
-          <div class="menu-divider"></div>
-          
-          <el-menu-item index="4" @click="logout" class="logout-item">
-            <el-icon><SwitchButton /></el-icon> <span>退出登录</span>
+          <el-menu-item index="records">
+            <el-icon><Document /></el-icon>
+            <span>使用记录</span>
           </el-menu-item>
         </el-menu>
+
+        <div class="aside-footer">
+          <el-button link type="info" @click="logout">
+            <el-icon><SwitchButton /></el-icon> 退出系统
+          </el-button>
+        </div>
       </el-aside>
-      
-      <el-main class="admin-content">
-        <div class="content-wrapper">
-          <!-- 设备管理 -->
-          <div v-if="activeTab === 'devices'">
-            <div class="page-header">
-              <div>
-                <h2>设备库</h2>
-                <p class="subtitle">管理实验室所有固定资产</p>
-              </div>
-              <el-button type="primary" size="large" @click="showAddDevice = true" :icon="Plus">新增设备</el-button>
-            </div>
-            
-            <el-card shadow="never" class="table-card">
-              <el-table :data="devices" stripe style="width: 100%" :header-cell-style="{background:'#f9fafb', color:'#374151'}">
-                <el-table-column prop="asset_code" label="资产编号" width="150">
-                  <template #default="{ row }">
-                    <span class="mono-code">{{ row.asset_code }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="name" label="设备名称">
-                  <template #default="{ row }">
-                    <span class="device-name">{{ row.name }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="location" label="位置" />
-                <el-table-column prop="manager" label="负责人" />
-                <el-table-column label="状态" width="120">
-                  <template #default="scope">
-                    <el-tag :type="scope.row.status === 0 ? 'success' : 'danger'" effect="dark" round>
-                      {{ scope.row.status === 0 ? '闲置' : '使用中' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="120" fixed="right">
-                  <template #default="scope">
-                    <el-button link type="primary" @click="viewQR(scope.row.id)">
-                      <el-icon><files /></el-icon> 二维码
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-card>
+
+      <!-- 主内容区 -->
+      <el-main class="admin-main">
+        <header class="main-header">
+          <h2>{{ menuTitle }}</h2>
+          <div class="header-right">
+             <el-button link type="primary" @click="$router.push('/login')">返回主站</el-button>
+          </div>
+        </header>
+
+        <div class="content-body">
+          <!-- 概览面板 -->
+          <div v-if="activeMenu === 'overview'" class="overview-section">
+            <el-row :gutter="20">
+              <el-col :span="8">
+                <el-card shadow="never" class="stat-card">
+                  <template #header>总设备数</template>
+                  <div class="stat-value">{{ devices.length }}</div>
+                </el-card>
+              </el-col>
+              <el-col :span="8">
+                <el-card shadow="never" class="stat-card">
+                  <template #header>活跃用户</template>
+                  <div class="stat-value">{{ users.length }}</div>
+                </el-card>
+              </el-col>
+              <el-col :span="8">
+                <el-card shadow="never" class="stat-card">
+                  <template #header>累计记录</template>
+                  <div class="stat-value">{{ records.length }}</div>
+                </el-card>
+              </el-col>
+            </el-row>
           </div>
 
           <!-- 用户管理 -->
-          <div v-if="activeTab === 'users'">
-            <div class="page-header">
-              <div>
-                <h2>用户名单</h2>
-                <p class="subtitle">允许访问系统的白名单</p>
-              </div>
-              <el-button type="primary" size="large" @click="showAddUser = true" :icon="Plus">新增用户</el-button>
+          <div v-if="activeMenu === 'users'" class="card-section">
+            <div class="table-actions">
+              <el-input v-model="newUser" placeholder="输入新用户名" style="width: 250px" size="large">
+                <template #append>
+                  <el-button @click="addUser" type="primary">添加用户</el-button>
+                </template>
+              </el-input>
             </div>
-            <el-card shadow="never" class="table-card">
-              <el-table :data="users" stripe style="width: 100%" :header-cell-style="{background:'#f9fafb', color:'#374151'}">
-                <el-table-column prop="id" label="ID" width="80" />
-                <el-table-column prop="username" label="用户名">
-                  <template #default="{ row }">
-                    <div class="user-cell">
-                      <div class="avatar-sm">{{ row.username.charAt(0).toUpperCase() }}</div>
-                      <span>{{ row.username }}</span>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="created_at" label="注册时间">
-                  <template #default="{ row }">
-                    {{ new Date(row.created_at).toLocaleDateString() }}
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-card>
+            <el-table :data="users" stripe style="width: 100%">
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column prop="username" label="用户名" />
+            </el-table>
           </div>
 
-          <!-- 记录查询 -->
-          <div v-if="activeTab === 'records'">
-            <div class="page-header">
-              <div>
-                <h2>使用记录</h2>
-                <p class="subtitle">查询历史实验数据</p>
-              </div>
-              <div class="filter-group">
-                <el-date-picker
-                  v-model="dateRange"
-                  type="daterange"
-                  range-separator="至"
-                  start-placeholder="开始日期"
-                  end-placeholder="结束日期"
-                  value-format="YYYY-MM-DD"
-                  @change="fetchRecords"
-                  size="default"
-                />
-                <el-button type="success" size="default" @click="exportExcel" :icon="Download">导出 Excel</el-button>
-              </div>
+          <!-- 资产列表 -->
+          <div v-if="activeMenu === 'devices'" class="card-section">
+            <el-table :data="devices" stripe style="width: 100%">
+              <el-table-column prop="id" label="ID" width="60" />
+              <el-table-column prop="name" label="名称" width="150" show-overflow-tooltip />
+              <el-table-column prop="asset_code" label="资产编号" width="120" />
+              <el-table-column prop="manager" label="当前负责人" width="120" />
+              <el-table-column label="状态" width="100">
+                <template #default="scope">
+                  <el-tag :type="statusTag(scope.row.status)">
+                    {{ statusText(scope.row.status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" min-width="180">
+                <template #default="scope">
+                  <el-button link type="primary" @click="viewQR(scope.row.id)">二维码</el-button>
+                  <el-popconfirm 
+                    title="确定删除该设备吗？不可恢复" 
+                    confirm-button-text="确定"
+                    cancel-button-text="取消"
+                    @confirm="deleteDevice(scope.row.id)"
+                  >
+                    <template #reference>
+                      <el-button link type="danger">删除</el-button>
+                    </template>
+                  </el-popconfirm>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <!-- 使用记录 -->
+          <div v-if="activeMenu === 'records'" class="card-section">
+            <div class="table-actions">
+              <el-date-picker
+                v-model="dateRange"
+                type="daterange"
+                range-separator="至"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                value-format="YYYY-MM-DD"
+                size="large"
+              />
+              <el-button type="success" @click="exportExcel" size="large">导出 Excel</el-button>
             </div>
-            <el-card shadow="never" class="table-card">
-              <el-table :data="records" stripe height="600" style="width: 100%" :header-cell-style="{background:'#f9fafb', color:'#374151'}">
-                <el-table-column prop="asset_code" label="资产编号" width="140" />
-                <el-table-column prop="device_name" label="设备名" width="180" />
-                <el-table-column prop="user_name" label="使用者" width="120" />
-                <el-table-column prop="start_time" label="开始时间" width="180">
-                  <template #default="{ row }">
-                    {{ new Date(row.start_time).toLocaleString() }}
-                  </template>
-                </el-table-column>
-                <el-table-column prop="end_time" label="结束时间" width="180">
-                  <template #default="{ row }">
-                    {{ new Date(row.end_time).toLocaleString() }}
-                  </template>
-                </el-table-column>
-                <el-table-column prop="duration" label="时长">
-                  <template #default="{ row }">
-                    <el-tag type="info" size="small">{{ (row.duration / 60).toFixed(1) }} 分钟</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="notes" label="备注" />
-              </el-table>
-            </el-card>
+            <el-table :data="records" stripe style="width: 100%" height="calc(100vh - 280px)">
+              <el-table-column prop="device_name" label="设备" width="150" show-overflow-tooltip />
+              <el-table-column prop="user_name" label="使用者" width="100" />
+              <el-table-column prop="start_time" label="开始时间" width="160">
+                <template #default="scope">{{ formatTime(scope.row.start_time) }}</template>
+              </el-table-column>
+              <el-table-column prop="end_time" label="结束时间" width="160">
+                <template #default="scope">{{ formatTime(scope.row.end_time) }}</template>
+              </el-table-column>
+              <el-table-column prop="duration" label="时长(秒)" width="100" />
+              <el-table-column prop="notes" label="备注" show-overflow-tooltip />
+            </el-table>
           </div>
         </div>
       </el-main>
     </el-container>
-
-    <!-- Dialogs -->
-    <el-dialog v-model="showAddDevice" title="新增设备" width="500px" center>
-      <el-form :model="newDevice" label-width="80px" label-position="top">
-        <el-form-item label="名称">
-          <el-input v-model="newDevice.name" size="large" />
-        </el-form-item>
-        <el-form-item label="资产编号">
-          <el-input v-model="newDevice.asset_code" size="large" />
-        </el-form-item>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="位置">
-              <el-input v-model="newDevice.location" size="large" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-             <el-form-item label="负责人">
-              <el-input v-model="newDevice.manager" size="large" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="图片">
-          <input type="file" @change="handleFileUpload" class="file-input" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showAddDevice = false" size="large">取消</el-button>
-        <el-button type="primary" @click="addDevice" size="large">提交</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="showAddUser" title="新增用户" width="400px" center>
-      <el-form label-width="80px" label-position="top">
-        <el-form-item label="用户名">
-          <el-input v-model="newUsername" size="large" placeholder="请输入用户名" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showAddUser = false" size="large">取消</el-button>
-        <el-button type="primary" @click="addUser" size="large">提交</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import api, { baseURL } from '../api';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
-  ElementPlus, Monitor, User, DataLine, SwitchButton, 
-  Plus, Download, Files 
+  Setting, User, Box, Document, DataBoard, 
+  SwitchButton, Plus, Download 
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
-const activeTab = ref('devices');
-const devices = ref([]);
-const users = ref([]);
-const records = ref([]);
+const activeMenu = ref('overview');
+const users = ref<any[]>([]);
+const devices = ref<any[]>([]);
+const records = ref<any[]>([]);
+const newUser = ref('');
 const dateRange = ref([]);
 
-const showAddDevice = ref(false);
-const newDevice = ref({ name: '', asset_code: '', location: '', manager: '' });
-const selectedFile = ref<File | null>(null);
-const showAddUser = ref(false);
-const newUsername = ref('');
+const menuTitle = computed(() => {
+  const titles: Record<string, string> = {
+    overview: '概览统计',
+    users: '用户管理',
+    devices: '资产设备管理',
+    records: '设备使用流水'
+  };
+  return titles[activeMenu.value];
+});
 
-const fetchDevices = async () => {
-  const res = await api.get('/devices');
-  devices.value = res.data;
+const handleMenuSelect = (index: string) => {
+  activeMenu.value = index;
+  if (index === 'users') fetchUsers();
+  if (index === 'devices') fetchDevices();
+  if (index === 'records') fetchRecords();
 };
 
 const fetchUsers = async () => {
@@ -232,50 +195,42 @@ const fetchUsers = async () => {
   users.value = res.data;
 };
 
+const fetchDevices = async () => {
+  const res = await api.get('/devices');
+  devices.value = res.data;
+};
+
 const fetchRecords = async () => {
-  const params: any = {};
-  if (dateRange.value && dateRange.value.length === 2) {
-    params.start_date = dateRange.value[0];
-    params.end_date = dateRange.value[1];
-  }
-  const res = await api.get('/admin/records', { params });
+  const res = await api.get('/admin/records');
   records.value = res.data;
 };
 
-const handleFileUpload = (event: any) => {
-  selectedFile.value = event.target.files[0];
-};
-
-const addDevice = async () => {
-  const formData = new FormData();
-  formData.append('name', newDevice.value.name);
-  formData.append('asset_code', newDevice.value.asset_code);
-  formData.append('location', newDevice.value.location);
-  formData.append('manager', newDevice.value.manager);
-  if (selectedFile.value) {
-    formData.append('image', selectedFile.value);
-  }
-
-  try {
-    await api.post('/admin/devices', formData);
-    ElMessage.success('设备添加成功');
-    showAddDevice.value = false;
-    fetchDevices();
-  } catch (err) {
-    ElMessage.error('添加失败');
-  }
-};
-
 const addUser = async () => {
+  if (!newUser.value) return;
   try {
-    await api.post('/admin/users', { username: newUsername.value });
+    await api.post('/admin/users', { username: newUser.value });
     ElMessage.success('用户添加成功');
-    showAddUser.value = false;
-    newUsername.value = '';
+    newUser.value = '';
     fetchUsers();
   } catch (err) {
     ElMessage.error('添加失败');
   }
+};
+
+const deleteDevice = async (id: number) => {
+  try {
+    await api.delete(`/admin/devices/${id}`);
+    ElMessage.success('设备已删除');
+    fetchDevices();
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || '删除失败');
+  }
+};
+
+const viewQR = (id: number) => {
+  const url = `${window.location.origin}/?id=${id}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}`;
+  window.open(qrUrl, '_blank');
 };
 
 const exportExcel = () => {
@@ -286,20 +241,34 @@ const exportExcel = () => {
   window.open(url, '_blank');
 };
 
-const viewQR = (id: number) => {
-  const url = `${window.location.origin}/?id=${id}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}`;
-  window.open(qrUrl, '_blank');
+const logout = () => {
+  localStorage.removeItem('isAdmin');
+  router.push('/admin-login');
 };
 
-const logout = () => {
-  localStorage.clear();
-  router.push('/login');
+const statusText = (status: number) => {
+  const texts = ['闲置', '使用中', '借出中', '故障'];
+  return texts[status];
+};
+
+const statusTag = (status: number) => {
+  const tags = ['success', 'danger', 'warning', 'info'];
+  return tags[status];
+};
+
+const formatTime = (timeStr: string) => {
+  if (!timeStr) return '-';
+  return new Date(timeStr).toLocaleString();
 };
 
 onMounted(() => {
-  fetchDevices();
+  if (localStorage.getItem('isAdmin') !== 'true') {
+    router.push('/admin-login');
+    return;
+  }
+  // 初始化加载所有数据用于概览显示
   fetchUsers();
+  fetchDevices();
   fetchRecords();
 });
 </script>
@@ -307,124 +276,107 @@ onMounted(() => {
 <style scoped>
 .admin-container {
   height: 100vh;
-  background-color: #f3f4f6;
+  background-color: #f9fafb;
 }
+
 .admin-layout {
   height: 100%;
 }
+
 .admin-aside {
-  background-color: #1f2937;
-  color: #fff;
+  background-color: #111827;
   display: flex;
   flex-direction: column;
-  box-shadow: 4px 0 10px rgba(0,0,0,0.1);
-  z-index: 10;
 }
+
 .logo-area {
   height: 64px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  padding: 0 20px;
+  gap: 12px;
   background-color: #111827;
-}
-.logo-area h2 {
-  margin: 0;
-  font-size: 20px;
-  letter-spacing: 1px;
-}
-.admin-menu {
-  flex: 1;
-  border-right: none;
-  padding-top: 20px;
-}
-.menu-label {
-  padding: 0 20px 10px;
-  font-size: 12px;
-  color: #6b7280;
-  text-transform: uppercase;
-  font-weight: 600;
-}
-.menu-divider {
-  height: 1px;
-  background: #374151;
-  margin: 10px 20px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+  border-bottom: 1px solid #1f2937;
 }
 
-.admin-content {
+.admin-menu {
+  border-right: none;
+  flex: 1;
+}
+
+.aside-footer {
+  padding: 20px;
+  border-top: 1px solid #1f2937;
+}
+
+.admin-main {
   padding: 0;
   background-color: #f3f4f6;
-  overflow-y: auto;
-}
-.content-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 30px;
 }
 
-.page-header {
+.main-header {
+  height: 64px;
+  background: #fff;
+  padding: 0 24px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  justify-content: space-between;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
-.page-header h2 {
-  margin: 0 0 4px 0;
-  font-size: 24px;
+
+.main-header h2 {
+  margin: 0;
+  font-size: 18px;
   color: #111827;
 }
-.subtitle {
-  margin: 0;
-  color: #6b7280;
-  font-size: 14px;
+
+.content-body {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
-.table-card {
-  border-radius: 8px;
-  overflow: hidden;
+.overview-section {
+  margin-bottom: 24px;
+}
+
+.stat-card {
   border: none;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-.mono-code {
-  font-family: 'Courier New', monospace;
-  background: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 600;
-  color: #374151;
-}
-.device-name {
-  font-weight: 600;
-  color: #1f2937;
-}
-.user-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.avatar-sm {
-  width: 28px;
-  height: 28px;
-  background: #e5e7eb;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: bold;
-  color: #4b5563;
+.stat-value {
+  font-size: 32px;
+  font-weight: 800;
+  color: #111827;
+  padding: 10px 0;
 }
 
-.filter-group {
-  display: flex;
-  gap: 12px;
+.card-section {
+  background: #fff;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
-.file-input {
-  padding: 10px;
-  border: 1px dashed #d1d5db;
-  width: 100%;
-  border-radius: 6px;
-  background: #f9fafb;
+
+.table-actions {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+/* 适配 Element Plus 样式 */
+:deep(.el-menu-item.is-active) {
+  background-color: #374151 !important;
+}
+:deep(.el-card__header) {
+  font-size: 14px;
+  color: #6b7280;
+  border-bottom: none;
+  padding-bottom: 0;
 }
 </style>

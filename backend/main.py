@@ -367,6 +367,21 @@ def export_records(start_date: str = None, end_date: str = None, db: Session = D
     headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
     return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
+@app.delete("/admin/devices/{device_id}")
+def delete_device(device_id: int, db: Session = Depends(get_db)):
+    device = db.query(models.Equipment).filter(models.Equipment.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    # 检查是否有正在进行的实验使用该设备
+    active = db.query(models.ActiveSession).filter(models.ActiveSession.equipment_id == device_id).first()
+    if active:
+        raise HTTPException(status_code=400, detail="Cannot delete a device that is currently in use")
+    
+    db.delete(device)
+    db.commit()
+    return {"status": "success"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
