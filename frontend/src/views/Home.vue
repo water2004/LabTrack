@@ -182,7 +182,7 @@
     <!-- 录入设备弹窗 -->
     <el-dialog v-model="showAddDevice" title="录入新设备" width="500px" center>
       <div class="photo-capture-area">
-        <div class="preview-box" @click="$refs.fileInputAdd.click()">
+        <div class="preview-box" @click="(($refs.fileInputAdd as any).click())">
           <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
           <div v-else class="preview-placeholder">
             <el-icon :size="40"><Camera /></el-icon>
@@ -217,7 +217,7 @@
     <!-- 编辑设备弹窗 -->
     <el-dialog v-model="showEditDevice" title="修改设备信息" width="450px" center>
       <div class="photo-capture-area">
-        <div class="preview-box" @click="$refs.fileInputEdit.click()">
+        <div class="preview-box" @click="(($refs.fileInputEdit as any).click())">
           <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
           <div v-else class="preview-placeholder">
             <el-icon :size="40"><Camera /></el-icon>
@@ -366,7 +366,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { 
   Search, Check, VideoPlay, Plus, Picture, Location, User, 
   Right, CircleCheckFilled, Collection, Delete, ElementPlus,
-  Edit, Setting, Files, Camera, FullScreen
+  Edit, Setting, Camera, FullScreen
 } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
@@ -423,7 +423,7 @@ const startCamera = async () => {
         scannerVisible.value = false;
         ElMessage.success('识别成功: ' + decodedText);
       },
-      (errorMessage) => {
+      (_errorMessage) => {
         // 扫码中，暂无结果
       }
     );
@@ -512,13 +512,6 @@ const handleFileUpload = (event: any) => {
     selectedFile.value = file;
     previewUrl.value = URL.createObjectURL(file);
   }
-};
-
-const openAdd = () => {
-  newDevice.value = { name: '', asset_code: '', location: '', manager: username };
-  selectedFile.value = null;
-  previewUrl.value = '';
-  showAddDevice.value = true;
 };
 
 const openEdit = (device: any) => {
@@ -631,7 +624,8 @@ const promptSavePreset = () => {
   ElMessageBox.prompt('请输入预设名称', '保存预设', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-  }).then(async ({ value }) => {
+  }).then(async (data: any) => {
+    const value = data.value;
     if (!value) return;
     const ids = selectedDevices.value.map(d => d.id).join(',');
     await api.post(`/presets?username=${username}`, { name: value, device_ids: ids });
