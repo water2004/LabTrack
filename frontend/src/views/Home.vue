@@ -180,7 +180,7 @@
           <el-link href="https://github.com/water2004/LabTrack" target="_blank" type="info" underline="never">
             Powered by LabTrack
           </el-link>
-          <span class="version-badge">v1.1.0</span>
+          <span class="version-badge">v1.1.1</span>
         </div>
       </div>
     </main>
