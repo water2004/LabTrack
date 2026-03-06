@@ -565,7 +565,7 @@ const initCropBox = () => {
 
 // 图像锐化处理函数 (卷积矩阵)
 const sharpen = (ctx: CanvasRenderingContext2D, w: number, h: number, amount: number = 0.5) => {
-  const x = [
+  const kernel = [
     0, -1, 0,
     -1, 5, -1,
     0, -1, 0
@@ -574,22 +574,31 @@ const sharpen = (ctx: CanvasRenderingContext2D, w: number, h: number, amount: nu
   const data = imageData.data;
   const buffer = new Uint8ClampedArray(data);
   
-  for (let y = 1; h - 1 > y; y++) {
-    for (let x_coord = 1; w - 1 > x_coord; x_coord++) {
-      const p = (y * w + x_coord) * 4;
-      for (let c = 0; 3 > c; c++) {
+  for (let y = 1; y < h - 1; y++) {
+    for (let xc = 1; xc < w - 1; xc++) {
+      const p = (y * w + xc) * 4;
+      for (let c = 0; c < 3; c++) {
         let res = 0;
-        for (let iy = -1; 1 >= iy; iy++) {
-          for (let ix = -1; 1 >= ix; ix++) {
-            const ip = ((y + iy) * w + (x_coord + ix)) * 4;
-            res += buffer[ip + c] * x[(iy + 1) * 3 + (ix + 1)];
+        for (let iy = -1; iy <= 1; iy++) {
+          for (let ix = -1; ix <= 1; ix++) {
+            const ip = ((y + iy) * w + (xc + ix)) * 4;
+            // 将非空断言移动到索引之后，以断言访问结果不为 undefined
+            res += buffer[ip + c]! * kernel[(iy + 1) * 3 + (ix + 1)]!;
           }
         }
-        data[p + c] = buffer[p + c] + (res - buffer[p + c]) * amount;
+        data[p + c] = buffer[p + c]! + (res - buffer[p + c]!) * amount;
       }
     }
   }
   ctx.putImageData(imageData, 0, 0);
+};
+
+const formatTime = (timeStr: string) => {
+  if (!timeStr) return '-';
+  const d = new Date(timeStr);
+  return d.toLocaleString('zh-CN', { 
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' 
+  });
 };
 
 const scannerFileInput = ref<HTMLInputElement | null>(null);
