@@ -186,7 +186,7 @@
     </main>
 
     <!-- 录入设备弹窗 -->
-    <el-dialog v-model="showAddDevice" title="录入新设备" width="500px" center>
+    <el-dialog v-model="showAddDevice" title="录入新设备" :width="dialogWidth" center>
       <div class="photo-capture-area">
         <div class="preview-box" @click="(($refs.fileInputAdd as any).click())">
           <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
@@ -427,6 +427,17 @@ const activeTab = ref('devices');
 const deviceFilter = ref('all');
 const presets = ref<any[]>([]);
 
+const windowWidth = ref(window.innerWidth);
+onMounted(() => {
+  window.addEventListener('resize', () => {
+    windowWidth.value = window.innerWidth;
+  });
+});
+
+const dialogWidth = computed(() => {
+  return windowWidth.value < 768 ? '95%' : '500px';
+});
+
 const users = ref<any[]>([]);
 const showAddDevice = ref(false);
 const showEditDevice = ref(false);
@@ -626,12 +637,13 @@ const confirmCropAndScan = async () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas Context Error');
     
-    // 2. 温和的图像增强：降低对比度增益，保留更多线条细节
-    ctx.filter = 'contrast(1.3) brightness(1.05) grayscale(1)';
+    // 2. 增强图像对比度并应用锐化（重新加入灰度）
+    ctx.filter = 'contrast(1.4) brightness(1.1) grayscale(1)';
     ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
 
-    // 减弱锐化强度 (0.6 -> 0.35)，防止产生干扰伪影
-    sharpen(ctx, canvas.width, canvas.height, 0.35);
+    // 减弱锐化强度，防止产生干扰伪影
+    sharpen(ctx, canvas.width, canvas.height, 0.4);
+
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
     debugImageUrl.value = dataUrl; // 关键修复：将处理后的图像传给 UI 显示
@@ -1022,8 +1034,39 @@ onMounted(() => {
 .crop-wrapper { position: relative; width: 100%; max-height: 60vh; background: #000; overflow: hidden; border-radius: 8px; touch-action: none; }
 .crop-image { display: block; width: 100%; height: auto; }
 .selection-box { position: absolute; border: 2px solid #409EFF; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); z-index: 10; }
-.selection-handle { position: absolute; width: 15px; height: 15px; background: #409EFF; border-radius: 2px; }
-.top-left { top: -5px; left: -5px; } .top-right { top: -5px; right: -5px; }
+.selection-handle {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  background: #409EFF;
+  border-radius: 2px;
+}
+@media (max-width: 768px) {
+  .selection-handle {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+  }
+  .top-left { top: -10px; left: -10px; }
+  .top-right { top: -10px; right: -10px; }
+  .bottom-left { bottom: -10px; left: -10px; }
+  .bottom-right { bottom: -10px; right: -10px; }
+
+  .cart-content {
+    padding: 10px 16px;
+  }
+  .device-preview {
+    display: none; /* 手机端隐藏已选名称预览以节省空间 */
+  }
+  .custom-header {
+    padding: 0 12px;
+  }
+  .brand-name {
+    display: none; /* 手机端隐藏标题文字，只留图标 */
+  }
+}
+.top-left { top: -5px; left: -5px; }
+ .top-right { top: -5px; right: -5px; }
 .bottom-left { bottom: -5px; left: -5px; } .bottom-right { bottom: -5px; right: -5px; }
 .scan-line-anim { width: 100%; height: 2px; background: rgba(64, 158, 255, 0.8); position: absolute; animation: scan-vertical 2s infinite ease-in-out; }
 @keyframes scan-vertical { 0% { transform: translateY(-400%); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(400%); opacity: 0; } }
