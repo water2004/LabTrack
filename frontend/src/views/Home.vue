@@ -390,6 +390,12 @@
           </div>
         </div>
         <p class="crop-tip">手指拖动方框，对准条形码</p>
+        
+        <!-- 调试预览：显示经过锐化处理后的图像 -->
+        <div v-if="debugImageUrl" class="debug-preview">
+          <p class="debug-label">引擎识别视角 (锐化+增强):</p>
+          <img :src="debugImageUrl" class="debug-img" />
+        </div>
       </div>
       <template #footer>
         <el-button @click="showCropDialog = false">取消</el-button>
@@ -434,6 +440,7 @@ const selectedFile = ref<File | null>(null);
 const showLinkDialog = ref(false);
 const shareLink = ref('');
 const pendingNotes = ref('');
+const debugImageUrl = ref('');
 
 // 扫码与裁剪逻辑
 const showCropDialog = ref(false);
@@ -545,6 +552,35 @@ const initCropBox = () => {
   }
 };
 
+// 图像锐化处理函数 (卷积矩阵)
+const sharpen = (ctx: CanvasRenderingContext2D, w: number, h: number, amount: number = 0.5) => {
+  const x = [
+    0, -1, 0,
+    -1, 5, -1,
+    0, -1, 0
+  ];
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+  const buffer = new Uint8ClampedArray(data);
+  
+  for (let y = 1; h - 1 > y; y++) {
+    for (let x_coord = 1; w - 1 > x_coord; x_coord++) {
+      const p = (y * w + x_coord) * 4;
+      for (let c = 0; 3 > c; c++) {
+        let res = 0;
+        for (let iy = -1; 1 >= iy; iy++) {
+          for (let ix = -1; 1 >= ix; ix++) {
+            const ip = ((y + iy) * w + (x_coord + ix)) * 4;
+            res += buffer[ip + c] * x[(iy + 1) * 3 + (ix + 1)];
+          }
+        }
+        data[p + c] = buffer[p + c] + (res - buffer[p + c]) * amount;
+      }
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+};
+
 const scannerFileInput = ref<HTMLInputElement | null>(null);
 const scannerTarget = ref<'add' | 'edit'>('add');
 
@@ -590,10 +626,15 @@ const confirmCropAndScan = async () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas Context Error');
     
-    ctx.filter = 'contrast(1.5) brightness(1.1) grayscale(1)';
+    // 2. 温和的图像增强：降低对比度增益，保留更多线条细节
+    ctx.filter = 'contrast(1.3) brightness(1.05) grayscale(1)';
     ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
-    
+
+    // 减弱锐化强度 (0.6 -> 0.35)，防止产生干扰伪影
+    sharpen(ctx, canvas.width, canvas.height, 0.35);
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    debugImageUrl.value = dataUrl; // 关键修复：将处理后的图像传给 UI 显示
 
     const result: any = await new Promise((resolve, reject) => {
       Quagga.decodeSingle({
@@ -988,4 +1029,26 @@ onMounted(() => {
 @keyframes scan-vertical { 0% { transform: translateY(-400%); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(400%); opacity: 0; } }
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s; }
 .slide-up-enter-from, .slide-up-leave-to { transform: translate(-50%, 100%); opacity: 0; }
+
+/* 调试预览样式 */
+.debug-preview {
+  margin-top: 15px;
+  padding: 10px;
+  background: #f0f2f5;
+  border-radius: 8px;
+  border: 1px dashed #dcdfe6;
+}
+.debug-label {
+  font-size: 12px;
+  color: #606266;
+  margin: 0 0 8px 0;
+  font-weight: bold;
+}
+.debug-img {
+  width: 100%;
+  max-height: 100px;
+  object-fit: contain;
+  display: block;
+  background: #fff;
+}
 </style>
