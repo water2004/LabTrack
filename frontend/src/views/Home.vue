@@ -355,9 +355,6 @@
       </el-input>
     </el-dialog>
 
-    <!-- 用于文件识别的隐藏容器 -->
-    <div id="reader-hidden" style="display: none;"></div>
-
     <!-- 裁剪框选对话框 -->
     <el-dialog 
       v-model="showCropDialog" 
@@ -406,7 +403,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import api, { baseURL } from '../api';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import Quagga from '@ericblade/quagga2';
 import { 
   Search, Check, VideoPlay, Plus, Picture, Location, User, 
   Right, CircleCheckFilled, Collection, Delete, ElementPlus,
@@ -548,7 +545,6 @@ const initCropBox = () => {
   }
 };
 
-// 扫码相关
 const scannerFileInput = ref<HTMLInputElement | null>(null);
 const scannerTarget = ref<'add' | 'edit'>('add');
 
@@ -576,65 +572,60 @@ const confirmCropAndScan = async () => {
     const scaleX = img.naturalWidth / img.clientWidth;
     const scaleY = img.naturalHeight / img.clientHeight;
     
-    // 1. 增加 15% 的缓冲区，防止边缘切割影响条码定位
     const padding = 0.15;
     let cropX = (selection.value.x - selection.value.w * padding / 2) * scaleX;
     let cropY = (selection.value.y - selection.value.h * padding / 2) * scaleY;
     let cropW = selection.value.w * (1 + padding) * scaleX;
     let cropH = selection.value.h * (1 + padding) * scaleY;
 
-    // 边界检查
     cropX = Math.max(0, cropX);
     cropY = Math.max(0, cropY);
     cropW = Math.min(img.naturalWidth - cropX, cropW);
     cropH = Math.min(img.naturalHeight - cropY, cropH);
 
     const canvas = document.createElement('canvas');
-    // 对于条形码，宽度分辨率更重要，固定一个高质量宽度
     canvas.width = 1200;
     canvas.height = (cropH / cropW) * 1200;
     
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas Context Error');
     
-    // 2. 图像增强：提高对比度和亮度，让条码黑白分明
-    ctx.filter = 'contrast(1.4) brightness(1.1)';
+    ctx.filter = 'contrast(1.5) brightness(1.1) grayscale(1)';
     ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
     
-    const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.95));
-    if (!blob) throw new Error('Blob Error');
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
 
-    // 转换为 File 对象，满足 html5-qrcode 的严格类型检查
-    const fileToScan = new File([blob], "scan.jpg", { type: "image/jpeg" });
-
-    // 3. 配置识别引擎，开启所有常见条码格式
-    const html5QrCode = new Html5Qrcode("reader-hidden", {
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.ITF,
-        Html5QrcodeSupportedFormats.QR_CODE
-      ],
-      verbose: false
+    const result: any = await new Promise((resolve, reject) => {
+      Quagga.decodeSingle({
+        src: dataUrl,
+        numOfWorkers: 0,
+        decoder: {
+          readers: [
+            "code_128_reader", "ean_reader", "ean_8_reader", 
+            "code_39_reader", "codabar_reader", "upc_reader"
+          ]
+        },
+        locate: true
+      }, (result) => {
+        if (result && result.codeResult) {
+          resolve(result);
+        } else {
+          reject(new Error("未发现有效条码"));
+        }
+      });
     });
 
-    const result = await html5QrCode.scanFileV2(fileToScan, false);
+    const decodedText = result.codeResult.code;
     
     if (scannerTarget.value === 'add') {
-      newDevice.value.asset_code = result.decodedText;
+      newDevice.value.asset_code = decodedText;
     } else {
-      editingDevice.value.asset_code = result.decodedText;
+      editingDevice.value.asset_code = decodedText;
     }
     
-    ElMessage.success('解析成功: ' + result.decodedText);
+    ElMessage.success('解析成功: ' + decodedText);
     showCropDialog.value = false;
-    html5QrCode.clear();
   } catch (err) {
-    console.error("Scan detailed error:", err);
     ElMessage.error('该区域未识别到条码。建议：调整框选范围，包含完整的条码线条及少量留白');
   } finally {
     scanning.value = false;
@@ -685,11 +676,10 @@ const statusClass = (status: number) => {
 };
 
 const isSelected = (id: number) => selectedDevices.value.some(d => d.id === id);
-
 const selectedNames = computed(() => selectedDevices.value.map(d => d.name).join('、'));
 
 const toggleSelection = (device: any) => {
-  pendingNotes.value = ''; // 手动修改选择时清空预设带入的备注
+  pendingNotes.value = '';
   const index = selectedDevices.value.findIndex(d => d.id === device.id);
   if (index > -1) {
     selectedDevices.value.splice(index, 1);
@@ -699,7 +689,6 @@ const toggleSelection = (device: any) => {
 };
 
 const previewUrl = ref('');
-
 const handleFileUpload = (event: any) => {
   const file = event.target.files[0];
   if (file) {
@@ -718,8 +707,6 @@ const openEdit = (device: any) => {
 
 const handleUpdate = async () => {
   if (!editingDevice.value.name) return;
-  
-  // 如果负责人发生变更，增加确认步骤
   if (editingDevice.value.manager !== username) {
     try {
       await ElMessageBox.confirm(
@@ -738,37 +725,31 @@ const handleUpdate = async () => {
     formData.append('name', editingDevice.value.name);
     formData.append('location', editingDevice.value.location || '');
     formData.append('manager', editingDevice.value.manager || '');
-    formData.append('asset_code', editingDevice.value.asset_code || ''); // 允许为空
+    formData.append('asset_code', editingDevice.value.asset_code || '');
     formData.append('status', editingDevice.value.status.toString());
     formData.append('username', username || '');
-    if (selectedFile.value) {
-      formData.append('image', selectedFile.value);
-    }
+    if (selectedFile.value) formData.append('image', selectedFile.value);
     
     await api.put(`/devices/${editingDevice.value.id}`, formData);
     ElMessage.success('更新成功');
     showEditDevice.value = false;
     fetchDevices();
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.detail || '更新失败');
+    ElMessage.error('更新失败');
   } finally {
     loading.value = false;
   }
 };
 
 const addDevice = async () => {
-  if (!newDevice.value.name) {
-    return ElMessage.warning('请填写设备名称');
-  }
+  if (!newDevice.value.name) return ElMessage.warning('请填写设备名称');
   loading.value = true;
   const formData = new FormData();
   formData.append('name', newDevice.value.name);
-  formData.append('asset_code', newDevice.value.asset_code || ''); // 资产编号现在是可选的
+  formData.append('asset_code', newDevice.value.asset_code || '');
   formData.append('location', newDevice.value.location || '');
   formData.append('manager', username || '');
-  if (selectedFile.value) {
-    formData.append('image', selectedFile.value);
-  }
+  if (selectedFile.value) formData.append('image', selectedFile.value);
 
   try {
     await api.post('/admin/devices', formData);
@@ -778,7 +759,7 @@ const addDevice = async () => {
     selectedFile.value = null;
     fetchDevices();
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.detail || '录入失败');
+    ElMessage.error('录入失败');
   } finally {
     loading.value = false;
   }
@@ -788,29 +769,25 @@ const startExperiment = async () => {
   ElMessageBox.prompt('请输入本次实验备注 (必填)', '开始实验', {
     confirmButtonText: '立即开始',
     cancelButtonText: '取消',
-    inputPlaceholder: '例如: 观察细胞生长 (项目编号 102)',
     inputValue: pendingNotes.value,
     inputPattern: /\S+/,
     inputErrorMessage: '备注不能为空',
   }).then(async (data: any) => {
-    const value = data.value;
     try {
       const ids = selectedDevices.value.map(d => d.id);
       await api.post('/experiment/start', { 
         device_ids: ids,
-        notes: value || ''
+        notes: data.value || ''
       }, { params: { username } });
       
       const baseUrl = window.location.origin + window.location.pathname;
       shareLink.value = `${baseUrl}?ids=${ids.join(',')}`;
-      
       selectedDevices.value = [];
       showLinkDialog.value = true;
-      
       fetchDevices();
       fetchActiveGroups();
     } catch (err: any) {
-      ElMessage.error(err.response?.data?.detail || '启动失败');
+      ElMessage.error('启动失败');
     }
   });
 };
@@ -820,10 +797,9 @@ const promptSavePreset = () => {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
   }).then(async (data: any) => {
-    const value = data.value;
-    if (!value) return;
+    if (!data.value) return;
     const ids = selectedDevices.value.map(d => d.id).join(',');
-    await api.post('/presets', { name: value, device_ids: ids }, { params: { username } });
+    await api.post('/presets', { name: data.value, device_ids: ids }, { params: { username } });
     ElMessage.success('预设已保存');
     fetchPresets();
   });
@@ -832,21 +808,10 @@ const promptSavePreset = () => {
 const applyPreset = (preset: any) => {
   const ids = preset.device_ids.split(',').map((id: string) => parseInt(id));
   const available = devices.value.filter(d => ids.includes(d.id) && d.status === 0);
-  
-  if (available.length === 0) {
-    ElMessage.warning('预设中的设备当前都在使用中或不存在');
-    return;
-  }
-  
+  if (available.length === 0) return ElMessage.warning('无可用设备');
   selectedDevices.value = available;
   pendingNotes.value = preset.notes || '';
   activeTab.value = 'devices';
-  
-  if (available.length < ids.length) {
-    ElMessage.warning(`部分设备忙碌，已选中 ${available.length} 台可用设备`);
-  } else {
-    ElMessage.success(`已加载预设: ${preset.name}`);
-  }
 };
 
 const deletePreset = async (id: number) => {
@@ -864,9 +829,7 @@ const openEditPreset = (preset: any) => {
 };
 
 const handleUpdatePreset = async () => {
-  if (!editingPreset.value.name || !editingPreset.value.device_ids_array.length) {
-    return ElMessage.warning('请填写名称并至少选择一个设备');
-  }
+  if (!editingPreset.value.name || !editingPreset.value.device_ids_array.length) return;
   loading.value = true;
   try {
     await api.put(`/presets/${editingPreset.value.id}`, {
@@ -885,7 +848,7 @@ const handleUpdatePreset = async () => {
 };
 
 const stopGroup = async (group: any) => {
-  ElMessageBox.confirm(`确定要结束该实验吗？(包含 ${group.devices.length} 台设备)`, '提示', {
+  ElMessageBox.confirm(`确定要结束该实验吗？`, '提示', {
     confirmButtonText: '确认结束',
     cancelButtonText: '取消',
     type: 'warning'
@@ -899,13 +862,6 @@ const stopGroup = async (group: any) => {
     } catch (err) {
       ElMessage.error('结束失败');
     }
-  });
-};
-
-const formatTime = (timeStr: string) => {
-  const d = new Date(timeStr);
-  return d.toLocaleString('zh-CN', { 
-    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' 
   });
 };
 
@@ -923,27 +879,18 @@ onMounted(() => {
   fetchDevices();
   fetchActiveGroups();
   fetchPresets();
-  
   const urlParams = new URLSearchParams(window.location.search);
   const scanId = urlParams.get('id');
   const batchIds = urlParams.get('ids');
-
   if (scanId) {
-    const idNum = parseInt(scanId);
     api.get('/devices').then(res => {
-      const device = res.data.find((d: any) => d.id === idNum);
-      if (device && device.status === 0) {
-        selectedDevices.value = [device];
-        ElMessage.info(`扫码选中: ${device.name}`);
-      }
+      const device = res.data.find((d: any) => d.id === parseInt(scanId));
+      if (device && device.status === 0) selectedDevices.value = [device];
     });
   } else if (batchIds) {
     const ids = batchIds.split(',').map(id => parseInt(id));
     api.get('/devices').then(res => {
       selectedDevices.value = res.data.filter((d: any) => ids.includes(d.id) && d.status === 0);
-      if (selectedDevices.value.length > 0) {
-        ElMessage.success(`已恢复上次组合: ${selectedNames.value}`);
-      }
     });
   }
 });
@@ -955,8 +902,6 @@ onMounted(() => {
   background-color: #f5f7fa;
   padding-bottom: 100px;
 }
-
-/* 顶部导航栏 */
 .custom-header {
   background: #fff;
   height: 64px;
@@ -969,536 +914,78 @@ onMounted(() => {
   top: 0;
   z-index: 100;
 }
-.logo-area {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+.logo-area { display: flex; align-items: center; gap: 10px; }
 .logo-icon {
-  width: 32px;
-  height: 32px;
+  width: 32px; height: 32px;
   background: linear-gradient(135deg, #409EFF 0%, #3a8ee6 100%);
   border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
 }
-.brand-name {
-  font-size: 20px;
-  font-weight: 700;
-  color: #303133;
-  letter-spacing: -0.5px;
-}
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.add-btn {
-  font-weight: 600;
-}
+.brand-name { font-size: 20px; font-weight: 700; color: #303133; }
+.header-actions { display: flex; align-items: center; gap: 16px; }
 .user-avatar {
-  width: 36px;
-  height: 36px;
-  background: #ecf5ff;
-  color: #409EFF;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  cursor: pointer;
-  border: 2px solid #fff;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-  transition: all 0.2s;
+  width: 36px; height: 36px; background: #ecf5ff; color: #409EFF;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: bold; cursor: pointer; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
-.user-avatar:hover {
-  background: #409EFF;
-  color: #fff;
-}
-
-.main-content {
-  max-width: 1200px;
-  margin: 20px auto;
-  padding: 0 20px;
-}
-
+.main-content { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
 .admin-footer {
-  text-align: center;
-  margin-top: 40px;
-  padding: 20px;
-  border-top: 1px solid #ebeef5;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+  text-align: center; margin-top: 40px; padding: 20px; border-top: 1px solid #ebeef5;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
-.footer-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  opacity: 0.7;
-}
+.footer-info { display: flex; align-items: center; gap: 12px; opacity: 0.7; }
 .version-badge {
-  font-size: 11px;
-  color: #a8abb2;
-  border: 1px solid #e4e7ed;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  letter-spacing: 0.5px;
-  background: #fff;
-  transition: all 0.3s;
+  font-size: 11px; color: #a8abb2; border: 1px solid #e4e7ed; padding: 1px 6px;
+  border-radius: 4px; background: #fff; transition: all 0.3s;
 }
-.version-badge:hover {
-  color: #409EFF;
-  border-color: #c6e2ff;
-  background: #ecf5ff;
-}
-
-/* 工具栏 */
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-.search-input {
-  width: 300px;
-}
-
-/* 现代设备卡片 */
+.version-badge:hover { color: #409EFF; border-color: #c6e2ff; background: #ecf5ff; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
 .device-card-modern {
-  background: #fff;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  margin-bottom: 24px;
-  border: 2px solid transparent;
-  cursor: pointer;
+  background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); margin-bottom: 24px; border: 2px solid transparent; cursor: pointer;
 }
-.device-card-modern:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0,0,0,0.08);
-}
-.device-card-modern.is-selected {
-  border-color: #67C23A;
-  background: #f0f9eb;
-}
-.device-card-modern.is-disabled {
-  opacity: 0.8;
-  cursor: not-allowed;
-  filter: grayscale(0.8);
-}
-
-.card-image-wrapper {
-  height: 160px;
-  position: relative;
-  background: #f8f9fa;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.device-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.no-img-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
+.device-card-modern:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.08); }
+.device-card-modern.is-selected { border-color: #67C23A; background: #f0f9eb; }
+.device-card-modern.is-disabled { opacity: 0.8; cursor: not-allowed; filter: grayscale(0.8); }
+.card-image-wrapper { height: 160px; position: relative; background: #f8f9fa; display: flex; align-items: center; justify-content: center; }
+.device-img { width: 100%; height: 100%; object-fit: cover; }
 .status-badge {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-  backdrop-filter: blur(4px);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  position: absolute; top: 12px; right: 12px; padding: 4px 10px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; color: #fff; backdrop-filter: blur(4px);
 }
 .status-idle { background: #67C23A; }
 .status-busy { background: #F56C6C; }
 .status-borrow { background: #E6A23C; }
 .status-error { background: #909399; }
-
-/* 照片采集区域 */
-.photo-capture-area {
-  margin-bottom: 20px;
-  display: flex;
-  justify-content: center;
-}
-.preview-box {
-  width: 100%;
-  max-width: 300px;
-  height: 200px;
-  border: 2px dashed #dcdfe6;
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  background: #f8f9fa;
-  transition: all 0.2s;
-}
-.preview-box:hover {
-  border-color: #409EFF;
-}
-.preview-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.preview-placeholder {
-  text-align: center;
-  color: #909399;
-}
-.preview-placeholder p {
-  margin-top: 8px;
-  font-size: 14px;
-}
-
 .selection-indicator {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(103, 194, 58, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(2px);
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(103, 194, 58, 0.2);
+  display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px);
 }
-
-.card-content {
-  padding: 16px;
+.card-content { padding: 16px; }
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.device-name { margin: 0; font-size: 16px; font-weight: 700; color: #303133; }
+.asset-code { font-size: 12px; color: #909399; background: #f4f4f5; padding: 2px 6px; border-radius: 4px; }
+.card-meta { display: flex; gap: 12px; color: #606266; font-size: 13px; }
+.photo-capture-area { margin-bottom: 20px; display: flex; justify-content: center; }
+.preview-box {
+  width: 100%; max-width: 300px; height: 200px; border: 2px dashed #dcdfe6; border-radius: 12px;
+  overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-}
-.device-name {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-  color: #303133;
-}
-.asset-code {
-  font-size: 12px;
-  color: #909399;
-  background: #f4f4f5;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-.card-meta {
-  display: flex;
-  gap: 12px;
-  color: #606266;
-  font-size: 13px;
-}
-.meta-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* 实验管理样式 */
-.experiments-container {
-  padding: 0 10px;
-}
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.section-header h3 {
-  margin: 0;
-  font-size: 18px;
-  color: #303133;
-}
-.count-badge {
-  background: #f56c6c;
-  color: #fff;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  vertical-align: middle;
-}
-.count-badge.secondary {
-  background: #409EFF;
-}
-
-.active-experiments-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
-}
-.experiment-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.05);
-  border-left: 4px solid #F56C6C;
-}
-.exp-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-}
-.time-info {
-  display: flex;
-  flex-direction: column;
-}
-.time-info .label {
-  font-size: 12px;
-  color: #909399;
-}
-.time-info .value {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
-.exp-divider {
-  height: 1px;
-  background: #ebeef5;
-  margin-bottom: 15px;
-}
-.exp-device-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-size: 14px;
-  color: #606266;
-}
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #409EFF;
-}
-.exp-device-item .code {
-  color: #909399;
-  font-size: 12px;
-}
-
-.presets-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 20px;
-}
-.preset-card-modern {
-  background: #fff;
-  border-radius: 12px;
-  padding: 16px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  border: 1px solid #ebeef5;
-  transition: all 0.2s;
-}
-.preset-card-modern:hover {
-  border-color: #409EFF;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.1);
-}
-.preset-icon {
-  width: 40px;
-  height: 40px;
-  background: #ecf5ff;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #409EFF;
-}
-.preset-info {
-  flex: 1;
-}
-.preset-info h4 {
-  margin: 0 0 4px 0;
-  font-size: 15px;
-  color: #303133;
-}
-.preset-info p {
-  margin: 0;
-  font-size: 12px;
-  color: #909399;
-}
-
-/* 底部浮动购物车 */
-.floating-cart {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  width: 90%;
-  max-width: 600px;
-}
-.cart-content {
-  background: rgba(48, 49, 51, 0.95);
-  backdrop-filter: blur(12px);
-  border-radius: 50px;
-  padding: 12px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-  color: #fff;
-}
-.cart-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.count {
-  background: #67C23A;
-  color: #fff;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  font-size: 13px;
-}
-.device-preview {
-  font-size: 13px;
-  color: #dcdfe6;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cart-actions {
-  display: flex;
-  gap: 10px;
-}
-.start-btn {
-  padding-left: 20px;
-  padding-right: 20px;
-}
-
-.upload-btn-wrapper input[type=file] {
-  font-size: 100px;
-  position: absolute;
-  left: 0;
-  top: 0;
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-}
-.upload-btn-wrapper {
-  position: relative;
-  overflow: hidden;
-  display: inline-block;
-  width: 100%;
-}
-
-/* 扫码裁剪界面样式 */
-.crop-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 15px;
-}
-.crop-wrapper {
-  position: relative;
-  width: 100%;
-  max-height: 60vh;
-  background: #000;
-  overflow: hidden;
-  border-radius: 8px;
-  touch-action: none; /* 禁用默认触摸行为 */
-}
-.crop-image {
-  display: block;
-  width: 100%;
-  height: auto;
-  user-select: none;
-}
-.selection-box {
-  position: absolute;
-  border: 2px solid #409EFF;
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* 遮罩效果 */
-  cursor: move;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.selection-handle {
-  position: absolute;
-  width: 15px;
-  height: 15px;
-  background: #409EFF;
-  border-radius: 2px;
-}
-.top-left { top: -5px; left: -5px; }
-.top-right { top: -5px; right: -5px; }
-.bottom-left { bottom: -5px; left: -5px; }
-.bottom-right { bottom: -5px; right: -5px; }
-
-.scan-line-anim {
-  width: 100%;
-  height: 2px;
-  background: rgba(64, 158, 255, 0.8);
-  box-shadow: 0 0 10px #409EFF;
-  position: absolute;
-  animation: scan-vertical 2s infinite ease-in-out;
-}
-@keyframes scan-vertical {
-  0% { transform: translateY(-400%); opacity: 0; }
-  50% { opacity: 1; }
-  100% { transform: translateY(400%); opacity: 0; }
-}
-.crop-tip {
-  color: #909399;
-  font-size: 13px;
-  margin: 0;
-}
-
-/* 过渡动画 */
-.slide-up-enter-active,
-.slide-up-leave-active {
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.5, 1);
-}
-.slide-up-enter-from,
-.slide-up-leave-to {
-  transform: translate(-50%, 100%);
-  opacity: 0;
-}
-.scanner-dot {
-  width: 100%;
-  height: 2px;
-  background: #409EFF;
-  position: absolute;
-  top: 50%;
-  left: 0;
-  box-shadow: 0 0 15px #409EFF;
-  animation: scan-move 2s infinite ease-in-out;
-}
-@keyframes scan-move {
-  0% { transform: translateY(-40px); opacity: 0; }
-  50% { opacity: 1; }
-  100% { transform: translateY(40px); opacity: 0; }
-}
+.active-experiments-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+.experiment-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.05); border-left: 4px solid #F56C6C; }
+.presets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+.preset-card-modern { background: #fff; border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 16px; border: 1px solid #ebeef5; }
+.floating-cart { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 600px; }
+.cart-content { background: rgba(48, 49, 51, 0.95); border-radius: 50px; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; color: #fff; }
+.crop-container { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+.crop-wrapper { position: relative; width: 100%; max-height: 60vh; background: #000; overflow: hidden; border-radius: 8px; touch-action: none; }
+.crop-image { display: block; width: 100%; height: auto; }
+.selection-box { position: absolute; border: 2px solid #409EFF; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); z-index: 10; }
+.selection-handle { position: absolute; width: 15px; height: 15px; background: #409EFF; border-radius: 2px; }
+.top-left { top: -5px; left: -5px; } .top-right { top: -5px; right: -5px; }
+.bottom-left { bottom: -5px; left: -5px; } .bottom-right { bottom: -5px; right: -5px; }
+.scan-line-anim { width: 100%; height: 2px; background: rgba(64, 158, 255, 0.8); position: absolute; animation: scan-vertical 2s infinite ease-in-out; }
+@keyframes scan-vertical { 0% { transform: translateY(-400%); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(400%); opacity: 0; } }
+.slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s; }
+.slide-up-enter-from, .slide-up-leave-to { transform: translate(-50%, 100%); opacity: 0; }
 </style>
