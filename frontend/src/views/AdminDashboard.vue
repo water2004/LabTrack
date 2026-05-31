@@ -96,6 +96,18 @@
 
           <!-- 资产列表 -->
           <div v-if="activeMenu === 'devices'" class="card-section">
+            <div class="table-actions">
+              <el-button type="success" @click="($refs.csvInput as any).click()">
+                <el-icon><Upload /></el-icon> 批量导入 CSV
+              </el-button>
+              <input
+                type="file"
+                ref="csvInput"
+                hidden
+                accept=".csv"
+                @change="handleCsvUpload"
+              />
+            </div>
             <el-table :data="devices" stripe style="width: 100%">
               <el-table-column prop="id" label="ID" width="60" />
               <el-table-column prop="name" label="名称" width="150" show-overflow-tooltip />
@@ -196,6 +208,23 @@
         </div>
       </el-main>
     </el-container>
+
+    <!-- CSV 导入结果弹窗 -->
+    <el-dialog v-model="showCsvResult" title="CSV 导入结果" width="420px" center>
+      <div style="line-height: 2;">
+        <p><el-tag type="success">成功导入</el-tag> <strong>{{ csvResult.created }}</strong> 条</p>
+        <p><el-tag type="warning">编号重复跳过</el-tag> <strong>{{ csvResult.skipped_duplicate }}</strong> 条</p>
+        <p><el-tag type="info">编号为空跳过</el-tag> <strong>{{ csvResult.skipped_empty_code }}</strong> 条</p>
+        <div v-if="csvResult.errors.length">
+          <el-divider />
+          <p style="color: #F56C6C; font-weight: 600;">错误详情：</p>
+          <p v-for="(e, i) in csvResult.errors" :key="i" style="font-size: 13px; color: #909399;">{{ e }}</p>
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="showCsvResult = false">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -204,9 +233,9 @@ import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import api, { baseURL } from '../api';
 import { ElMessage } from 'element-plus';
-import { 
-  Setting, User, Box, Document, DataBoard, 
-  SwitchButton
+import {
+  Setting, User, Box, Document, DataBoard,
+  SwitchButton, Upload
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -216,6 +245,9 @@ const devices = ref<any[]>([]);
 const records = ref<any[]>([]);
 const newUser = ref('');
 const dateRange = ref([]);
+const csvImporting = ref(false);
+const showCsvResult = ref(false);
+const csvResult = ref({ created: 0, skipped_duplicate: 0, skipped_empty_code: 0, errors: [] as string[] });
 
 const config = ref({
   vision_enabled: false,
@@ -306,6 +338,25 @@ const deleteDevice = async (id: number) => {
     fetchDevices();
   } catch (err: any) {
     ElMessage.error(err.response?.data?.detail || '删除失败');
+  }
+};
+
+const handleCsvUpload = async (event: any) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  csvImporting.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post('/admin/import-csv', formData);
+    csvResult.value = res.data;
+    showCsvResult.value = true;
+    fetchDevices();
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || '导入失败');
+  } finally {
+    csvImporting.value = false;
+    event.target.value = '';
   }
 };
 

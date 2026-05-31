@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from typing import List
 import os
+import io
+import csv
 import uuid
 import base64
 import datetime
@@ -451,6 +453,88 @@ def add_device(
     db.commit()
     db.refresh(device)
     return device
+
+@app.post("/admin/import-csv")
+async def import_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """批量导入设备 CSV。列：资产编号（必填）、设备名称、存放位置、负责人。"""
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="请上传 .csv 文件")
+
+    raw = await file.read()
+    # 尝试常见编码
+    text = None
+    for enc in ["utf-8-sig", "utf-8", "gbk", "gb2312"]:
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise HTTPException(status_code=400, detail="无法识别文件编码，请使用 UTF-8 或 GBK 编码")
+
+    reader = csv.reader(io.StringIO(text))
+    rows = [row for row in reader if any(cell.strip() for cell in row)]  # 去掉全空行
+    if not rows:
+        raise HTTPException(status_code=400, detail="CSV 文件为空")
+
+    # 自动检测表头：第一行的第一列包含常见"编号"关键词则视为表头
+    header_keywords = ["编号", "资产", "asset", "code", "名称", "name", "位置", "location", "负责人", "manager"]
+    start_idx = 0
+    if rows and rows[0]:
+        first_cell = rows[0][0].strip().lower()
+        if any(kw in first_cell for kw in header_keywords):
+            start_idx = 1
+
+    created = 0
+    skipped_duplicate = 0
+    skipped_empty_code = 0
+    errors = []
+
+    for i, row in enumerate(rows[start_idx:], start=start_idx + 1):
+        # 补全列数到 4
+        while len(row) < 4:
+            row.append("")
+        asset_code = row[0].strip() if len(row) > 0 else ""
+        name = row[1].strip() if len(row) > 1 else ""
+        location = row[2].strip() if len(row) > 2 else ""
+        manager = row[3].strip() if len(row) > 3 else ""
+
+        if not asset_code:
+            skipped_empty_code += 1
+            continue
+
+        existing = db.query(models.Equipment).filter(
+            models.Equipment.asset_code == asset_code
+        ).first()
+        if existing:
+            skipped_duplicate += 1
+            continue
+
+        try:
+            device = models.Equipment(
+                uuid=str(uuid.uuid4()).upper(),
+                name=name or f"设备-{asset_code}",
+                asset_code=asset_code,
+                location=location or None,
+                manager=manager or None,
+                status=0,
+            )
+            db.add(device)
+            created += 1
+        except Exception as e:
+            errors.append(f"第{i}行: {e}")
+
+    db.commit()
+
+    return {
+        "created": created,
+        "skipped_duplicate": skipped_duplicate,
+        "skipped_empty_code": skipped_empty_code,
+        "errors": errors,
+    }
 
 @app.get("/admin/records")
 def list_records(start_date: str = None, end_date: str = None, db: Session = Depends(get_db)):
