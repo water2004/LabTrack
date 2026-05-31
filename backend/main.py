@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 from typing import List
 import os
 import uuid
+import base64
 import datetime
+import requests
 import pandas as pd
 from io import BytesIO
 from fastapi.responses import StreamingResponse
@@ -59,6 +61,18 @@ def verify_admin(password: str):
         raise HTTPException(status_code=401, detail="Invalid admin password")
     return True
 
+# --- 系统配置助手 (基于 SystemConfig 键值表) ---
+def get_config(db: Session, key: str, default: str = None):
+    row = db.query(models.SystemConfig).filter(models.SystemConfig.key == key).first()
+    return row.value if row else default
+
+def set_config(db: Session, key: str, value: str):
+    row = db.query(models.SystemConfig).filter(models.SystemConfig.key == key).first()
+    if row:
+        row.value = value
+    else:
+        db.add(models.SystemConfig(key=key, value=value))
+
 # --- User APIs ---
 
 @app.post("/auth/login", response_model=schemas.Token)
@@ -68,6 +82,93 @@ def login(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found. Please contact admin.")
     # In a real app, we'd issue a real JWT. Here we use username as token for simplicity.
     return {"access_token": user.username, "token_type": "bearer"}
+
+# --- 公开配置 (前台据此决定是否显示 AI 功能) ---
+@app.get("/config/public")
+def get_public_config(db: Session = Depends(get_db)):
+    return {
+        "vision_enabled": get_config(db, "vision_enabled", "false") == "true"
+    }
+
+# --- AI 视觉识别 ---
+def _build_chat_url(base_url: str) -> str:
+    """将管理员配置的端点 URL 规范为 chat/completions 地址。"""
+    url = (base_url or "").strip().rstrip("/")
+    if not url:
+        raise HTTPException(status_code=500, detail="Vision API URL not configured")
+    if url.endswith("/chat/completions"):
+        return url
+    return f"{url}/chat/completions"
+
+@app.post("/vision/recognize")
+async def vision_recognize(
+    mode: str = Form(...),  # 'name' 识别设备名称, 'code' 识别资产编号
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    if get_config(db, "vision_enabled", "false") != "true":
+        raise HTTPException(status_code=403, detail="视觉识别功能未开启")
+
+    api_url = get_config(db, "vision_api_url")
+    api_key = get_config(db, "vision_api_key")
+    model = get_config(db, "vision_model") or "gpt-4o-mini"
+    if not api_url or not api_key:
+        raise HTTPException(status_code=400, detail="视觉模型尚未配置完整")
+
+    raw = await image.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="图片为空")
+    mime = image.content_type or "image/jpeg"
+    b64 = base64.b64encode(raw).decode("utf-8")
+
+    if mode == "name":
+        prompt = (
+            "这是一张实验室仪器/设备的照片。请仅返回该设备的中文名称（如：恒温摇床、离心机、电子天平），"
+            "不要包含型号、品牌、标点或任何多余文字。若无法确定，返回最贴近的通用设备名称。"
+        )
+    elif mode == "code":
+        prompt = (
+            "这是一张设备资产标签的照片，条形码附近通常印有一串数字或字母数字组成的资产编号。"
+            "请仅返回该编号本身（连续的字符），不要包含空格、换行、说明文字或其他内容。"
+            "若图中存在多个编号，返回与条形码关联的主编号。"
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Invalid mode")
+
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                ],
+            }
+        ],
+        "max_tokens": 60,
+        "temperature": 0,
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    try:
+        resp = requests.post(_build_chat_url(api_url), json=payload, headers=headers, timeout=60)
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"无法连接视觉服务: {e}")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"视觉服务返回错误 ({resp.status_code}): {resp.text[:200]}")
+
+    try:
+        data = resp.json()
+        text = data["choices"][0]["message"]["content"]
+    except (ValueError, KeyError, IndexError, TypeError):
+        raise HTTPException(status_code=502, detail="无法解析视觉服务返回结果")
+
+    result = (text or "").strip().strip('`"\'').strip()
+    if not result:
+        raise HTTPException(status_code=422, detail="未能识别出有效内容")
+    return {"result": result}
 
 @app.get("/devices", response_model=List[schemas.Equipment])
 def get_devices(q: str = None, db: Session = Depends(get_db)):
@@ -274,6 +375,29 @@ def delete_preset(preset_id: int, username: str, db: Session = Depends(get_db)):
 def admin_auth(data: schemas.AdminAuth):
     verify_admin(data.password)
     return {"access_token": "admin_token", "token_type": "bearer"}
+
+# --- 系统设置 / AI 视觉 ---
+@app.get("/admin/config")
+def get_admin_config(db: Session = Depends(get_db)):
+    api_key = get_config(db, "vision_api_key", "")
+    return {
+        "vision_enabled": get_config(db, "vision_enabled", "false") == "true",
+        "vision_api_url": get_config(db, "vision_api_url", ""),
+        "vision_model": get_config(db, "vision_model", ""),
+        # 不回传明文 Key，仅告知是否已设置
+        "vision_api_key_set": bool(api_key),
+    }
+
+@app.post("/admin/config")
+def update_admin_config(data: schemas.VisionConfigUpdate, db: Session = Depends(get_db)):
+    set_config(db, "vision_enabled", "true" if data.vision_enabled else "false")
+    set_config(db, "vision_api_url", (data.vision_api_url or "").strip())
+    set_config(db, "vision_model", (data.vision_model or "").strip())
+    # 仅当传入非空 Key 时更新，留空表示保持原值
+    if data.vision_api_key:
+        set_config(db, "vision_api_key", data.vision_api_key.strip())
+    db.commit()
+    return {"status": "success"}
 
 @app.post("/admin/users")
 def add_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):

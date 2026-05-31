@@ -32,6 +32,10 @@
             <el-icon><Document /></el-icon>
             <span>使用记录</span>
           </el-menu-item>
+          <el-menu-item index="settings">
+            <el-icon><Setting /></el-icon>
+            <span>系统设置</span>
+          </el-menu-item>
         </el-menu>
 
         <div class="aside-footer">
@@ -149,6 +153,46 @@
               <el-table-column prop="notes" label="备注" show-overflow-tooltip />
             </el-table>
           </div>
+
+          <!-- 系统设置 -->
+          <div v-if="activeMenu === 'settings'" class="card-section">
+            <el-form :model="config" label-width="160px" label-position="top" style="max-width: 600px;">
+              <el-divider content-position="left">AI 视觉识别</el-divider>
+              <p class="settings-hint">
+                开启后，前台录入设备时可使用视觉模型按照片识别设备名称，并在扫码弹窗中按编号数字识别资产编号。
+                需配置 OpenAI 兼容（Chat Completions）的视觉模型端点。
+              </p>
+
+              <el-form-item label="启用 AI 视觉识别">
+                <el-switch v-model="config.vision_enabled" />
+              </el-form-item>
+
+              <template v-if="config.vision_enabled">
+                <el-form-item label="端点 URL (OpenAI API)">
+                  <el-input
+                    v-model="config.vision_api_url"
+                    placeholder="如: https://api.openai.com/v1"
+                  />
+                  <span class="settings-tip">填写到 /v1 即可，系统会自动追加 /chat/completions。</span>
+                </el-form-item>
+                <el-form-item label="模型名称">
+                  <el-input v-model="config.vision_model" placeholder="如: gpt-4o-mini" />
+                </el-form-item>
+                <el-form-item label="API Key">
+                  <el-input
+                    v-model="config.vision_api_key"
+                    type="password"
+                    show-password
+                    :placeholder="config.vision_api_key_set ? '已设置（留空则保持不变）' : '请输入 API Key'"
+                  />
+                </el-form-item>
+              </template>
+
+              <el-form-item>
+                <el-button type="primary" @click="saveConfig" :loading="savingConfig">保存设置</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
         </div>
       </el-main>
     </el-container>
@@ -173,12 +217,22 @@ const records = ref<any[]>([]);
 const newUser = ref('');
 const dateRange = ref([]);
 
+const config = ref({
+  vision_enabled: false,
+  vision_api_url: '',
+  vision_model: '',
+  vision_api_key: '',
+  vision_api_key_set: false,
+});
+const savingConfig = ref(false);
+
 const menuTitle = computed(() => {
   const titles: Record<string, string> = {
     overview: '概览统计',
     users: '用户管理',
     devices: '资产设备管理',
-    records: '设备使用流水'
+    records: '设备使用流水',
+    settings: '系统设置'
   };
   return titles[activeMenu.value];
 });
@@ -188,6 +242,7 @@ const handleMenuSelect = (index: string) => {
   if (index === 'users') fetchUsers();
   if (index === 'devices') fetchDevices();
   if (index === 'records') fetchRecords();
+  if (index === 'settings') fetchConfig();
 };
 
 const fetchUsers = async () => {
@@ -203,6 +258,33 @@ const fetchDevices = async () => {
 const fetchRecords = async () => {
   const res = await api.get('/admin/records');
   records.value = res.data;
+};
+
+const fetchConfig = async () => {
+  try {
+    const res = await api.get('/admin/config');
+    config.value = { ...res.data, vision_api_key: '' };
+  } catch (err) {
+    ElMessage.error('读取配置失败');
+  }
+};
+
+const saveConfig = async () => {
+  savingConfig.value = true;
+  try {
+    await api.post('/admin/config', {
+      vision_enabled: config.value.vision_enabled,
+      vision_api_url: config.value.vision_api_url,
+      vision_model: config.value.vision_model,
+      vision_api_key: config.value.vision_api_key || null,
+    });
+    ElMessage.success('设置已保存');
+    fetchConfig();
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || '保存失败');
+  } finally {
+    savingConfig.value = false;
+  }
 };
 
 const addUser = async () => {
@@ -367,6 +449,18 @@ onMounted(() => {
   display: flex;
   gap: 16px;
   margin-bottom: 20px;
+}
+
+.settings-hint {
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 20px 0;
+}
+.settings-tip {
+  color: #909399;
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 /* 适配 Element Plus 样式 */

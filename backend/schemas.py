@@ -58,3 +58,11 @@ class Preset(PresetBase):
     user_id: int
     class Config:
         from_attributes = True
+
+# --- 系统设置 / AI 视觉 ---
+class VisionConfigUpdate(BaseModel):
+    vision_enabled: bool = False
+    vision_api_url: Optional[str] = None
+    vision_model: Optional[str] = None
+    # 留空表示保持现有 Key 不变
+    vision_api_key: Optional[str] = None

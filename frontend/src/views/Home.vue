@@ -200,7 +200,18 @@
       
       <el-form :model="newDevice" label-width="80px" label-position="top">
         <el-form-item label="设备名称">
-          <el-input v-model="newDevice.name" placeholder="如: 恒温摇床" />
+          <div style="display: flex; gap: 8px;">
+            <el-input v-model="newDevice.name" placeholder="如: 恒温摇床" />
+            <el-button
+              v-if="visionEnabled"
+              type="success"
+              plain
+              @click="recognizeDeviceName"
+              :loading="visionNaming"
+            >
+              <el-icon><Picture /></el-icon> AI 识别
+            </el-button>
+          </div>
         </el-form-item>
         <el-form-item label="资产编号 (可选)">
           <div style="display: flex; gap: 8px;">
@@ -399,6 +410,15 @@
       </div>
       <template #footer>
         <el-button @click="showCropDialog = false">取消</el-button>
+        <el-button
+          v-if="visionEnabled"
+          type="success"
+          plain
+          @click="confirmCropWithVision"
+          :loading="visionScanning"
+        >
+          <el-icon><Picture /></el-icon> AI 识别编号
+        </el-button>
         <el-button type="primary" @click="confirmCropAndScan" :loading="scanning">开始识别</el-button>
       </template>
     </el-dialog>
@@ -459,6 +479,11 @@ const cropSourceUrl = ref('');
 const cropImg = ref<HTMLImageElement | null>(null);
 const cropWrapper = ref<HTMLDivElement | null>(null);
 const scanning = ref(false);
+
+// AI 视觉识别
+const visionEnabled = ref(false);
+const visionScanning = ref(false); // 裁剪框内 AI 识别编号
+const visionNaming = ref(false);   // 录入弹窗 AI 识别设备名称
 
 const selection = ref({ x: 50, y: 100, w: 200, h: 80 }); // 初始选择框位置
 const selectionStyle = computed(() => ({
@@ -624,36 +649,7 @@ const confirmCropAndScan = async () => {
   scanning.value = true;
 
   try {
-    const img = cropImg.value;
-    const scaleX = img.naturalWidth / img.clientWidth;
-    const scaleY = img.naturalHeight / img.clientHeight;
-    
-    const padding = 0.15;
-    let cropX = (selection.value.x - selection.value.w * padding / 2) * scaleX;
-    let cropY = (selection.value.y - selection.value.h * padding / 2) * scaleY;
-    let cropW = selection.value.w * (1 + padding) * scaleX;
-    let cropH = selection.value.h * (1 + padding) * scaleY;
-
-    cropX = Math.max(0, cropX);
-    cropY = Math.max(0, cropY);
-    cropW = Math.min(img.naturalWidth - cropX, cropW);
-    cropH = Math.min(img.naturalHeight - cropY, cropH);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 1200;
-    canvas.height = (cropH / cropW) * 1200;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas Context Error');
-    
-    // 2. 增强图像对比度并应用锐化（重新加入灰度）
-    ctx.filter = 'contrast(1.4) brightness(1.1) grayscale(1)';
-    ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
-
-    // 减弱锐化强度，防止产生干扰伪影
-    sharpen(ctx, canvas.width, canvas.height, 0.4);
-
-
+    const canvas = cropToCanvas(true);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
     debugImageUrl.value = dataUrl; // 关键修复：将处理后的图像传给 UI 显示
 
@@ -663,7 +659,7 @@ const confirmCropAndScan = async () => {
         numOfWorkers: 0,
         decoder: {
           readers: [
-            "code_128_reader", "ean_reader", "ean_8_reader", 
+            "code_128_reader", "ean_reader", "ean_8_reader",
             "code_39_reader", "codabar_reader", "upc_reader"
           ]
         },
@@ -678,19 +674,93 @@ const confirmCropAndScan = async () => {
     });
 
     const decodedText = result.codeResult.code;
-    
+
     if (scannerTarget.value === 'add') {
       newDevice.value.asset_code = decodedText;
     } else {
       editingDevice.value.asset_code = decodedText;
     }
-    
+
     ElMessage.success('解析成功: ' + decodedText);
     showCropDialog.value = false;
   } catch (err) {
     ElMessage.error('该区域未识别到条码。建议：调整框选范围，包含完整的条码线条及少量留白');
   } finally {
     scanning.value = false;
+    if (scannerFileInput.value) scannerFileInput.value.value = '';
+  }
+};
+
+// 将当前框选区域裁剪为 canvas。process=true 时应用灰度/锐化（用于条码引擎）；
+// process=false 时保留原始彩色图像（用于视觉模型识别数字编号）。
+const cropToCanvas = (process: boolean): HTMLCanvasElement => {
+  const img = cropImg.value!;
+  const scaleX = img.naturalWidth / img.clientWidth;
+  const scaleY = img.naturalHeight / img.clientHeight;
+
+  const padding = 0.15;
+  let cropX = (selection.value.x - selection.value.w * padding / 2) * scaleX;
+  let cropY = (selection.value.y - selection.value.h * padding / 2) * scaleY;
+  let cropW = selection.value.w * (1 + padding) * scaleX;
+  let cropH = selection.value.h * (1 + padding) * scaleY;
+
+  cropX = Math.max(0, cropX);
+  cropY = Math.max(0, cropY);
+  cropW = Math.min(img.naturalWidth - cropX, cropW);
+  cropH = Math.min(img.naturalHeight - cropY, cropH);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = (cropH / cropW) * 1200;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas Context Error');
+
+  if (process) {
+    // 增强图像对比度并应用锐化（重新加入灰度），便于条码引擎识别
+    ctx.filter = 'contrast(1.4) brightness(1.1) grayscale(1)';
+  }
+  ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+  if (process) {
+    // 减弱锐化强度，防止产生干扰伪影
+    sharpen(ctx, canvas.width, canvas.height, 0.4);
+  }
+  return canvas;
+};
+
+const canvasToBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
+  new Promise((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/jpeg', 0.9);
+  });
+
+// 调用后端视觉识别接口
+const recognizeVision = async (file: Blob, mode: 'name' | 'code'): Promise<string> => {
+  const formData = new FormData();
+  formData.append('mode', mode);
+  formData.append('image', file, 'capture.jpg');
+  const res = await api.post('/vision/recognize', formData);
+  return res.data.result;
+};
+
+// 在裁剪框中使用视觉模型识别编号数字
+const confirmCropWithVision = async () => {
+  if (!cropImg.value || !cropWrapper.value) return;
+  visionScanning.value = true;
+  try {
+    const canvas = cropToCanvas(false);
+    const blob = await canvasToBlob(canvas);
+    const code = await recognizeVision(blob, 'code');
+    if (scannerTarget.value === 'add') {
+      newDevice.value.asset_code = code;
+    } else {
+      editingDevice.value.asset_code = code;
+    }
+    ElMessage.success('识别成功: ' + code);
+    showCropDialog.value = false;
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || 'AI 识别失败');
+  } finally {
+    visionScanning.value = false;
     if (scannerFileInput.value) scannerFileInput.value.value = '';
   }
 };
@@ -721,6 +791,15 @@ const fetchActiveGroups = async () => {
 const fetchPresets = async () => {
   const res = await api.get('/presets', { params: { username } });
   presets.value = res.data;
+};
+
+const fetchPublicConfig = async () => {
+  try {
+    const res = await api.get('/config/public');
+    visionEnabled.value = !!res.data.vision_enabled;
+  } catch (err) {
+    visionEnabled.value = false;
+  }
 };
 
 const statusText = (status: number) => {
@@ -756,6 +835,23 @@ const handleFileUpload = (event: any) => {
   if (file) {
     selectedFile.value = file;
     previewUrl.value = URL.createObjectURL(file);
+  }
+};
+
+// 录入弹窗：根据已上传照片用视觉模型识别设备名称
+const recognizeDeviceName = async () => {
+  if (!selectedFile.value) {
+    return ElMessage.warning('请先拍照或选择设备照片');
+  }
+  visionNaming.value = true;
+  try {
+    const name = await recognizeVision(selectedFile.value, 'name');
+    newDevice.value.name = name;
+    ElMessage.success('识别成功: ' + name);
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || 'AI 识别失败');
+  } finally {
+    visionNaming.value = false;
   }
 };
 
@@ -941,6 +1037,7 @@ onMounted(() => {
   fetchDevices();
   fetchActiveGroups();
   fetchPresets();
+  fetchPublicConfig();
   const urlParams = new URLSearchParams(window.location.search);
   const scanId = urlParams.get('id');
   const batchIds = urlParams.get('ids');
