@@ -1130,6 +1130,8 @@ onMounted(() => {
   width: 100%; max-width: 300px; height: 200px; border: 2px dashed #dcdfe6; border-radius: 12px;
   overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
+.preview-img { width: 100%; height: 100%; object-fit: contain; }
+.preview-placeholder { text-align: center; color: #909399; }
 .active-experiments-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
 .experiment-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.05); border-left: 4px solid #F56C6C; }
 .presets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
