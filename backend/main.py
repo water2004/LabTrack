@@ -6,6 +6,7 @@ from typing import List
 import os
 import io
 import csv
+import re
 import uuid
 import base64
 import datetime
@@ -127,12 +128,14 @@ async def vision_recognize(
         prompt = (
             "这是一张实验室仪器/设备的照片。请仅返回该设备的中文名称（如：恒温摇床、离心机、电子天平），"
             "不要包含型号、品牌、标点或任何多余文字。若无法确定，返回最贴近的通用设备名称。"
+            "\n<no_think>\n"
         )
     elif mode == "code":
         prompt = (
             "这是一张设备资产标签的照片，条形码附近通常印有一串数字或字母数字组成的资产编号。"
             "请仅返回该编号本身（连续的字符），不要包含空格、换行、说明文字或其他内容。"
             "若图中存在多个编号，返回与条形码关联的主编号。"
+            "\n<no_think>\n"
         )
     else:
         raise HTTPException(status_code=400, detail="Invalid mode")
@@ -148,13 +151,15 @@ async def vision_recognize(
                 ],
             }
         ],
-        "max_tokens": 60,
+        "max_tokens": 500,
         "temperature": 0,
     }
+    chat_url = _build_chat_url(api_url)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    print(f"[vision] 请求: url={chat_url}, model={model}, mode={mode}, image_size={len(raw)}")
 
     try:
-        resp = requests.post(_build_chat_url(api_url), json=payload, headers=headers, timeout=60)
+        resp = requests.post(chat_url, json=payload, headers=headers, timeout=60)
     except requests.RequestException as e:
         raise HTTPException(status_code=502, detail=f"无法连接视觉服务: {e}")
 
@@ -163,14 +168,22 @@ async def vision_recognize(
 
     try:
         data = resp.json()
+        print(f"[vision] API 完整响应: {resp.text[:2000]}")
         text = data["choices"][0]["message"]["content"]
-    except (ValueError, KeyError, IndexError, TypeError):
-        raise HTTPException(status_code=502, detail="无法解析视觉服务返回结果")
+    except (ValueError, KeyError, IndexError, TypeError) as e:
+        print(f"[vision] 解析失败, raw response: {resp.text[:500]}")
+        raise HTTPException(status_code=502, detail=f"无法解析视觉服务返回结果: {e}")
 
-    result = (text or "").strip().strip('`"\'').strip()
-    if not result:
+    # 清理模型输出：去掉 markdown 代码块、引号、首尾空白，但保留有意义内容
+    raw_text = (text or "").strip()
+    # 去掉 ```...``` 包裹
+    cleaned = re.sub(r'^```[a-zA-Z]*\s*', '', raw_text)
+    cleaned = re.sub(r'\s*```$', '', cleaned)
+    cleaned = cleaned.strip().strip('`"\'').strip()
+    if not cleaned:
+        print(f"[vision] 结果为空, raw text from model: {repr(text)}")
         raise HTTPException(status_code=422, detail="未能识别出有效内容")
-    return {"result": result}
+    return {"result": cleaned}
 
 @app.get("/devices", response_model=List[schemas.Equipment])
 def get_devices(q: str = None, db: Session = Depends(get_db)):
