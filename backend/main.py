@@ -125,9 +125,19 @@ async def vision_recognize(
     b64 = base64.b64encode(raw).decode("utf-8")
 
     if mode == "name":
-        prompt = "直接说出图中设备名称。"
+        prompt = (
+            "识别图中实验室设备，只输出设备名称。规则："
+            "能看到设备→输出名称（如：恒温摇床）；"
+            "不是设备→输出\"非设备\"；"
+            "看不清→输出\"无法识别\"。"
+        )
     elif mode == "code":
-        prompt = "直接读出图中资产编号数字。"
+        prompt = (
+            "识别图中资产编号，只输出编号。规则："
+            "有条形码旁的数字→输出该数字；"
+            "只有编号没有条码→输出编号；"
+            "看不到编号→输出\"未发现编号\"。"
+        )
     else:
         raise HTTPException(status_code=400, detail="Invalid mode")
 
