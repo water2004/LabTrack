@@ -125,18 +125,9 @@ async def vision_recognize(
     b64 = base64.b64encode(raw).decode("utf-8")
 
     if mode == "name":
-        prompt = (
-            "这是一张实验室仪器/设备的照片。请仅返回该设备的中文名称（如：恒温摇床、离心机、电子天平），"
-            "不要包含型号、品牌、标点或任何多余文字。若无法确定，返回最贴近的通用设备名称。"
-            "\n<no_think>\n"
-        )
+        prompt = "直接说出图中设备名称。不要解释，不要犹豫，只输出名称本身。"
     elif mode == "code":
-        prompt = (
-            "这是一张设备资产标签的照片，条形码附近通常印有一串数字或字母数字组成的资产编号。"
-            "请仅返回该编号本身（连续的字符），不要包含空格、换行、说明文字或其他内容。"
-            "若图中存在多个编号，返回与条形码关联的主编号。"
-            "\n<no_think>\n"
-        )
+        prompt = "直接读出图中资产编号数字。不要解释，不要犹豫，只输出编号本身。"
     else:
         raise HTTPException(status_code=400, detail="Invalid mode")
 
@@ -151,7 +142,7 @@ async def vision_recognize(
                 ],
             }
         ],
-        "max_tokens": 500,
+        "max_tokens": 2048,
         "temperature": 0,
     }
     chat_url = _build_chat_url(api_url)
