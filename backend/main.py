@@ -125,9 +125,9 @@ async def vision_recognize(
     b64 = base64.b64encode(raw).decode("utf-8")
 
     if mode == "name":
-        prompt = "直接说出图中设备名称。不要解释，不要犹豫，只输出名称本身。"
+        prompt = "直接说出图中设备名称。"
     elif mode == "code":
-        prompt = "直接读出图中资产编号数字。不要解释，不要犹豫，只输出编号本身。"
+        prompt = "直接读出图中资产编号数字。"
     else:
         raise HTTPException(status_code=400, detail="Invalid mode")
 
