@@ -206,11 +206,12 @@
               v-if="visionEnabled"
               type="success"
               plain
-              @click="recognizeDeviceName"
+              @click="($refs.aiNameInput as any).click()"
               :loading="visionNaming"
             >
               <el-icon><Picture /></el-icon> AI 识别
             </el-button>
+            <input type="file" ref="aiNameInput" hidden accept="image/*" capture="environment" @change="handleAiNamePhoto" />
           </div>
         </el-form-item>
         <el-form-item label="资产编号 (可选)">
@@ -838,20 +839,20 @@ const handleFileUpload = (event: any) => {
   }
 };
 
-// 录入弹窗：根据已上传照片用视觉模型识别设备名称
-const recognizeDeviceName = async () => {
-  if (!selectedFile.value) {
-    return ElMessage.warning('请先拍照或选择设备照片');
-  }
+// 录入弹窗：单独拍标签照片用视觉模型识别设备名称
+const handleAiNamePhoto = async (event: any) => {
+  const file = event.target.files[0];
+  if (!file) return;
   visionNaming.value = true;
   try {
-    const name = await recognizeVision(selectedFile.value, 'name');
+    const name = await recognizeVision(file, 'name');
     newDevice.value.name = name;
     ElMessage.success('识别成功: ' + name);
   } catch (err: any) {
     ElMessage.error(err.response?.data?.detail || 'AI 识别失败');
   } finally {
     visionNaming.value = false;
+    event.target.value = '';
   }
 };
 
