@@ -78,10 +78,10 @@
                     <h3 class="device-name">{{ device.name }}</h3>
                     <div style="display: flex; align-items: center; gap: 8px;">
                       <span class="asset-code">{{ device.asset_code }}</span>
-                      <el-button 
-                        v-if="device.manager === username" 
-                        link 
-                        type="primary" 
+                      <el-button
+                        v-if="!device.manager || device.manager === username"
+                        link
+                        type="primary"
                         style="padding: 0;"
                         @click.stop="openEdit(device)"
                       >
