@@ -188,7 +188,7 @@
     <!-- 录入设备弹窗 -->
     <el-dialog v-model="showAddDevice" title="录入新设备" :width="dialogWidth" center>
       <div class="photo-capture-area">
-        <div class="preview-box">
+        <div class="preview-box" @click="openPhotoPicker('add')">
           <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
           <div v-else class="preview-placeholder">
             <el-icon :size="40"><Camera /></el-icon>
@@ -196,15 +196,12 @@
           </div>
         </div>
         <div class="photo-actions">
-          <el-button plain @click="($refs.fileInputAdd as any).click()">
-            <el-icon><Upload /></el-icon> 上传图片
-          </el-button>
-          <el-button plain @click="($refs.cameraInputAdd as any).click()">
-            <el-icon><Camera /></el-icon> 拍照
+          <el-button plain @click="openPhotoPicker('add')">
+            <el-icon><Picture /></el-icon> 选择照片
           </el-button>
         </div>
-        <input type="file" ref="fileInputAdd" hidden accept="image/*" @change="handleFileUpload" />
-        <input type="file" ref="cameraInputAdd" hidden accept="image/*" capture="environment" @change="handleFileUpload" />
+        <input type="file" ref="fileInputAdd" data-ref="fileInputAdd" hidden @change="handleFileUpload" />
+        <input type="file" ref="cameraInputAdd" data-ref="cameraInputAdd" hidden accept="image/*" capture="environment" @change="handleFileUpload" />
       </div>
       
       <el-form :model="newDevice" label-width="80px" label-position="top">
@@ -215,22 +212,13 @@
               v-if="visionEnabled"
               type="success"
               plain
-              @click="($refs.aiNameInput as any).click()"
+              @click="openPhotoPicker('ai-name')"
               :loading="visionNaming"
             >
-              <el-icon><Upload /></el-icon> 上传识别
+              <el-icon><Picture /></el-icon> AI 识别
             </el-button>
-            <el-button
-              v-if="visionEnabled"
-              type="success"
-              plain
-              @click="($refs.aiNameCameraInput as any).click()"
-              :loading="visionNaming"
-            >
-              <el-icon><Camera /></el-icon> 拍照识别
-            </el-button>
-            <input type="file" ref="aiNameInput" hidden accept="image/*" @change="handleAiNamePhoto" />
-            <input type="file" ref="aiNameCameraInput" hidden accept="image/*" capture="environment" @change="handleAiNamePhoto" />
+            <input type="file" ref="aiNameInput" data-ref="aiNameInput" hidden @change="handleAiNamePhoto" />
+            <input type="file" ref="aiNameCameraInput" data-ref="aiNameCameraInput" hidden accept="image/*" capture="environment" @change="handleAiNamePhoto" />
           </div>
         </el-form-item>
         <el-form-item label="资产编号 (可选)">
@@ -254,7 +242,7 @@
     <!-- 编辑设备弹窗 -->
     <el-dialog v-model="showEditDevice" title="修改设备信息" width="450px" center>
       <div class="photo-capture-area">
-        <div class="preview-box">
+        <div class="preview-box" @click="openPhotoPicker('edit')">
           <img v-if="previewUrl" :src="previewUrl" class="preview-img" />
           <div v-else class="preview-placeholder">
             <el-icon :size="40"><Camera /></el-icon>
@@ -262,15 +250,12 @@
           </div>
         </div>
         <div class="photo-actions">
-          <el-button plain @click="($refs.fileInputEdit as any).click()">
-            <el-icon><Upload /></el-icon> 上传图片
-          </el-button>
-          <el-button plain @click="($refs.cameraInputEdit as any).click()">
-            <el-icon><Camera /></el-icon> 拍照
+          <el-button plain @click="openPhotoPicker('edit')">
+            <el-icon><Picture /></el-icon> 选择照片
           </el-button>
         </div>
-        <input type="file" ref="fileInputEdit" hidden accept="image/*" @change="handleFileUpload" />
-        <input type="file" ref="cameraInputEdit" hidden accept="image/*" capture="environment" @change="handleFileUpload" />
+        <input type="file" ref="fileInputEdit" data-ref="fileInputEdit" hidden @change="handleFileUpload" />
+        <input type="file" ref="cameraInputEdit" data-ref="cameraInputEdit" hidden accept="image/*" capture="environment" @change="handleFileUpload" />
       </div>
 
       <el-form :model="editingDevice" label-width="80px" label-position="top">
@@ -329,6 +314,18 @@
       capture="environment" 
       @change="handleScannerFile" 
     />
+
+    <!-- 手机端照片来源选择 -->
+    <el-dialog v-model="showPhotoPicker" title="选择照片来源" width="320px" center append-to-body>
+      <div class="photo-source-actions">
+        <el-button plain size="large" @click="choosePhotoSource('album')">
+          <el-icon><Upload /></el-icon> 从相册选择
+        </el-button>
+        <el-button type="primary" plain size="large" @click="choosePhotoSource('camera')">
+          <el-icon><Camera /></el-icon> 拍照
+        </el-button>
+      </div>
+    </el-dialog>
 
     <!-- 编辑预设弹窗 -->
     <el-dialog v-model="showEditPreset" title="编辑实验预设" width="400px" center>
@@ -491,6 +488,7 @@ const users = ref<any[]>([]);
 const showAddDevice = ref(false);
 const showEditDevice = ref(false);
 const showEditPreset = ref(false);
+const showPhotoPicker = ref(false);
 const editingDevice = ref<any>({});
 const editingPreset = ref<any>({});
 const loading = ref(false);
@@ -513,6 +511,30 @@ const scanning = ref(false);
 const visionEnabled = ref(false);
 const visionScanning = ref(false); // 裁剪框内 AI 识别编号
 const visionNaming = ref(false);   // 录入弹窗 AI 识别设备名称
+
+type PhotoPickerTarget = 'add' | 'edit' | 'ai-name';
+const photoPickerTarget = ref<PhotoPickerTarget>('add');
+
+const triggerFileInput = (refName: string) => {
+  const input = document.querySelector<HTMLInputElement>(`input[data-ref="${refName}"]`);
+  input?.click();
+};
+
+const openPhotoPicker = (target: PhotoPickerTarget) => {
+  photoPickerTarget.value = target;
+  showPhotoPicker.value = true;
+};
+
+const choosePhotoSource = (source: 'album' | 'camera') => {
+  const inputMap: Record<PhotoPickerTarget, Record<typeof source, string>> = {
+    add: { album: 'fileInputAdd', camera: 'cameraInputAdd' },
+    edit: { album: 'fileInputEdit', camera: 'cameraInputEdit' },
+    'ai-name': { album: 'aiNameInput', camera: 'aiNameCameraInput' },
+  };
+
+  triggerFileInput(inputMap[photoPickerTarget.value][source]);
+  showPhotoPicker.value = false;
+};
 
 const selection = ref({ x: 50, y: 100, w: 200, h: 80 }); // 初始选择框位置
 const selectionStyle = computed(() => ({
@@ -859,18 +881,30 @@ const toggleSelection = (device: any) => {
 };
 
 const previewUrl = ref('');
+const isImageFile = (file: File) => file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(file.name);
+
 const handleFileUpload = (event: any) => {
   const file = event.target.files[0];
-  if (file) {
-    selectedFile.value = file;
-    previewUrl.value = URL.createObjectURL(file);
+  if (!file) return;
+  if (!isImageFile(file)) {
+    ElMessage.warning('请选择图片文件');
+    event.target.value = '';
+    return;
   }
+  selectedFile.value = file;
+  previewUrl.value = URL.createObjectURL(file);
+  event.target.value = '';
 };
 
 // 录入弹窗：单独拍标签照片用视觉模型识别设备名称
 const handleAiNamePhoto = async (event: any) => {
   const file = event.target.files[0];
   if (!file) return;
+  if (!isImageFile(file)) {
+    ElMessage.warning('请选择图片文件');
+    event.target.value = '';
+    return;
+  }
   visionNaming.value = true;
   try {
     const name = await recognizeVision(file, 'name');
@@ -1162,6 +1196,8 @@ onMounted(() => {
 .preview-img { width: 100%; height: 100%; object-fit: contain; }
 .preview-placeholder { text-align: center; color: #909399; }
 .photo-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.photo-source-actions { display: flex; flex-direction: column; gap: 12px; }
+.photo-source-actions .el-button { width: 100%; margin-left: 0; }
 .active-experiments-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
 .experiment-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.05); border-left: 4px solid #F56C6C; }
 .presets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
